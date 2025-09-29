@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sosyal Bilgiler Bilgi Yarışması</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        margin:0;
+        color:#fff; 
+        background-color: #0f172a; /* slate-900 */
+        background-image: radial-gradient(ellipse at bottom, rgba(76, 29, 149, 0.6) 0%, rgba(15, 23, 42, 0) 70%);
+        background-repeat: no-repeat;
+      }
+      
+      .question-text, 
+      .score-text, 
+      .matching-item,
+      .fill-in-text { color: #e2e8f0; } /* slate-200 */
+      .progress-text { color: #cbd5e1; } /* slate-300 */
+      
+      .joker-button { background-color: #3b82f6; color: white; border: none; } /* blue-500 */
+      .joker-button:hover:not(:disabled) { background-color: #2563eb; } /* blue-600 */
+      
+      .option-btn-default { background-color: #3b82f6; color: white; border: none; } /* blue-500 */
+      .option-btn-default:hover:not(:disabled) { background-color: #2563eb; } /* blue-600 */
+
+      .option-btn.correct { 
+        background-color: #22c55e !important; /* green-500 */
+        color: white !important; 
+        border-color: #16a34a !important; /* green-600 */
+        animation: correctPulse 0.6s ease, correctGlow 1s ease;
+      }
+      .option-btn.incorrect {
+        background-color: #ef4444 !important; /* red-500 */
+        color: white !important; 
+        border-color: #dc2626 !important; /* red-600 */
+        animation: shake 0.5s ease;
+      }
+      .option-btn-disabled { opacity: 0.7; pointer-events: none; }
+
+      @keyframes correctGlow {
+          0% { box-shadow: 0 0 0 rgba(34, 197, 94, 0); }
+          50% { box-shadow: 0 0 25px rgba(34, 197, 94, 0.9); }
+          100% { box-shadow: 0 0 0 rgba(34, 197, 94, 0); }
+      }
+      @keyframes correctPulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+          100% { transform: scale(1); }
+      }
+      @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          75% { transform: translateX(5px); }
+      }
+      .timer-warning { animation: pulse 1s infinite; }
+      @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .animate-fadeIn { animation: fadeIn 0.3s ease-in-out; }
+
+      @keyframes slideIn {
+        from { transform: translateY(20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      .animate-slideIn { animation: slideIn 0.4s ease-out; }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.20.0"
+  }
+}
+</script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>

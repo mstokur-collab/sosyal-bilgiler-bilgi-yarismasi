@@ -1,11 +1,16 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, Question, QuestionType, QuizQuestion } from '../types';
 
-if (!process.env.API_KEY) {
-  console.warn("Gemini API key is not in environment variables. AI features will be disabled.");
+// Vercel gibi modern platformlarda API anahtarına erişmenin doğru yolu budur.
+// Vercel, 'VITE_API_KEY' adıyla kaydettiğiniz anahtarı buraya güvenli bir şekilde ekleyecektir.
+const apiKey = import.meta.env.VITE_API_KEY;
+
+if (!apiKey) {
+  console.warn("Gemini API anahtarı (VITE_API_KEY) ortam değişkeni olarak ayarlanmamış. AI özellikleri devre dışı kalacak.");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// API anahtarı olmasa bile uygulamanın çökmemesi için || '' ekliyoruz.
+const ai = new GoogleGenAI({ apiKey: apiKey || '' });
 
 const getQuizSchema = () => ({
   type: Type.OBJECT,
@@ -70,8 +75,8 @@ export const generateQuestionWithAI = async (
   count: number,
   imageData?: { mimeType: string; data: string }
 ): Promise<Omit<Question, 'id' | 'grade' | 'topic' | 'difficulty' | 'type'>[]> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API key not configured.");
+  if (!apiKey) {
+    throw new Error("API anahtarı ayarlanmamış.");
   }
   
   const promptText = `
@@ -153,8 +158,8 @@ export const generateQuestionWithAI = async (
 export const extractQuestionFromImage = async (
     imageData: { mimeType: string; data: string }
 ): Promise<(Omit<QuizQuestion, 'id' | 'grade' | 'topic' | 'type' | 'kazanımId' | 'imageUrl'> & { visualContext?: { x: number; y: number; width: number; height: number; } })[]> => {
-    if (!process.env.API_KEY) {
-        throw new Error("API key not configured.");
+    if (!apiKey) {
+        throw new Error("API anahtarı ayarlanmamış.");
     }
 
     const promptText = `

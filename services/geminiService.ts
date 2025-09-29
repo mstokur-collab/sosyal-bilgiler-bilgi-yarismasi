@@ -12,15 +12,13 @@ let ai: GoogleGenAI | null = null;
  */
 const getAiClient = (): GoogleGenAI => {
   if (!ai) {
-    // For Vite projects, environment variables exposed to the client
-    // MUST be prefixed with VITE_ and are accessed via import.meta.env.
-    // FIX: Per coding guidelines, use process.env.API_KEY. This also resolves the TypeScript error.
+    // FIX: Switched from `import.meta.env.VITE_API_KEY` to `process.env.API_KEY` to align with the Gemini API guidelines and fix the TypeScript error.
+    // The API key is loaded from environment variables.
     const apiKey = process.env.API_KEY;
 
     if (!apiKey) {
-      // This user-friendly error will be caught by the UI component (TeacherPanel)
+      // This user-friendly error will be caught by the TeacherPanel component
       // and displayed to the user without crashing the entire application.
-      // FIX: Updated error message to reflect the correct environment variable name.
       throw new Error("Gemini API anahtarı bulunamadı. Lütfen 'API_KEY' ortam değişkenini ayarlayın.");
     }
     ai = new GoogleGenAI({ apiKey });

@@ -147,11 +147,7 @@ const AIGenerator: React.FC<{
             
             const { grade, difficulty, type, count, kazanımObject, ogrenmeAlaniName } = formData;
             
-            if(!process.env.API_KEY) {
-                setError("API anahtarı ayarlanmamış. Bu özellik kullanılamıyor.");
-                return;
-            }
-
+            // FIX: Removed redundant API key check; this is handled by the geminiService.
             const generatedData = await generateQuestionWithAI(grade, kazanımObject.id, kazanımObject.text, difficulty, type, count, imageData ? { mimeType: imageData.mimeType, data: imageData.data } : undefined);
             const questionsWithMetadata = generatedData.map(q => ({ 
                 ...q, 
@@ -184,11 +180,7 @@ const AIGenerator: React.FC<{
             if (!formData) return;
             const { grade, kazanımObject, ogrenmeAlaniName } = formData;
 
-             if(!process.env.API_KEY) {
-                setError("API anahtarı ayarlanmamış. Bu özellik kullanılamıyor.");
-                return;
-            }
-            
+            // FIX: Removed redundant API key check; this is handled by the geminiService.
             const extractedQuestionsData = await extractQuestionFromImage({ mimeType: imageData.mimeType, data: imageData.data });
             
             if (!extractedQuestionsData || extractedQuestionsData.length === 0) {

@@ -1,10 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, Question, QuestionType, QuizQuestion } from '../types';
 
-if (!process.env.API_KEY) {
-  console.warn("Gemini API key is not in environment variables. AI features will be disabled.");
-}
-
+// FIX: Aligned with coding guidelines to use process.env.API_KEY directly, assuming it's always available.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getQuizSchema = () => ({
@@ -70,10 +67,7 @@ export const generateQuestionWithAI = async (
   count: number,
   imageData?: { mimeType: string; data: string }
 ): Promise<Omit<Question, 'id' | 'grade' | 'topic' | 'difficulty' | 'type'>[]> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API key not configured.");
-  }
-  
+  // FIX: Removed API key check as per guidelines assuming it's always available.
   const promptText = `
     Lütfen aşağıdaki kriterlere ve sağlanan görsele uygun ${count} adet sosyal bilgiler bilgi yarışması sorusu oluştur:
     - Sınıf Seviyesi: ${grade}. sınıf
@@ -153,10 +147,7 @@ export const generateQuestionWithAI = async (
 export const extractQuestionFromImage = async (
     imageData: { mimeType: string; data: string }
 ): Promise<(Omit<QuizQuestion, 'id' | 'grade' | 'topic' | 'type' | 'kazanımId' | 'imageUrl'> & { visualContext?: { x: number; y: number; width: number; height: number; } })[]> => {
-    if (!process.env.API_KEY) {
-        throw new Error("API key not configured.");
-    }
-
+    // FIX: Removed API key check as per guidelines assuming it's always available.
     const promptText = `
         Sen eğitim materyalleri için uzman bir OCR (Optik Karakter Tanıma) ve analiz aracısın.
         Sağlanan görseli analiz et. Bu görsel, üzerinde doğru cevapları bir şekilde işaretlenmiş (örneğin daire içine alınmış, üzeri çizilmiş, tik atılmış vb.) birden fazla çoktan seçmeli soru içerebilir.
@@ -176,7 +167,7 @@ export const extractQuestionFromImage = async (
             - Eğer bir soru herhangi bir görsel öğeye ihtiyaç duymuyorsa, \`visualContext\` alanını boş bırak.
         8.  **SINIRLAYICI KUTU KOORDİNATLARI:**
             - \`visualContext\` olarak belirlediğin alanın sınırlayıcı kutusunu (bounding box) hassas bir şekilde hesapla.
-            - Koordinatları (x, y, genişlik, yükseklik) görselin toplam boyutlarına göre 0 ile 1 arasında ondalık sayılar olarak ver. (0,0) sol üst köşedir.
+            - Koordinatları (x, y, genişlik, yükselik) görselin toplam boyutlarına göre 0 ile 1 arasında ondalık sayılar olarak ver. (0,0) sol üst köşedir.
         
         Sonucu, talep edilen JSON şemasına harfiyen uyacak şekilde bir JSON DİZİSİ (array) olarak döndür. Her soru dizinin bir elemanı olmalıdır. Başka hiçbir açıklama veya metin ekleme.
     `;

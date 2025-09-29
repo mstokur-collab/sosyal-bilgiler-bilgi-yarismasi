@@ -1,4 +1,3 @@
-// FIX: Updated the QuizComponents file to fix potential bugs, improve UI consistency, and align with the latest implementation. This includes fixes for layout, font scaling, and state management in hooks.
 import React, { useState, useEffect, useMemo, useCallback, useRef, useLayoutEffect } from 'react';
 import type { Question, GameSettings, QuizQuestion, FillInQuestion, MatchingQuestion, MatchingPair } from '../types';
 import { Button, Modal } from './UI';

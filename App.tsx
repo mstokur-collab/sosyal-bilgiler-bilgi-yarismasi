@@ -192,7 +192,7 @@ const initialQuestions: Question[] = [
     "kazanımId": "SB.6.1.1",
     "difficulty": "kolay",
     "type": "quiz",
-    "question": "On iki yaşındaki Arda, babası, annesi ve kardeşiyle birlikte akşam yemeğini yedi. Sonrasında odasına geçip ödevlerini tamamladı. Ertesi gün okulda derslerine odaklanarak öğretmeninin anlattıklarını dikkatle dinledi ve grup çalışmasında aktif rol aldı. Teneffüste ise arkadaşleriyle basketbol oynadı. Bu anlatıma göre aşağıdakilerden hangisi Arda'nın sahip olduğu haklardan biri olarak gösterilebilir?",
+    "question": "On iki yaşındaki Arda, babası, annesi ve kardeşiyle birlikte akşam yemeğini yedi. Sonrasında odasına geçip ödevlerini tamamladı. Ertesi gün okulda derslerine odaklanarak öğretmeninin anlattıklarını dikkatle dinledi ve grup çalışmasında aktif rol aldı. Teneffüste ise arkadaşlarıyla basketbol oynadı. Bu anlatıma göre aşağıdakilerden hangisi Arda'nın sahip olduğu haklardan biri olarak gösterilebilir?",
     "options": [
       "Derslerini dikkatli bir şekilde dinlemek",
       "Grup çalışmasında üzerine düşeni yapmak",

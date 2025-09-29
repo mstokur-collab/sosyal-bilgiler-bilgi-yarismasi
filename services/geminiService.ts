@@ -1,8 +1,33 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, Question, QuestionType, QuizQuestion } from '../types';
 
-// FIX: Aligned with coding guidelines to use process.env.API_KEY directly, assuming it's always available.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Use a variable to hold the initialized client.
+// This allows for "lazy initialization" - we only create the client when it's first needed.
+let ai: GoogleGenAI | null = null;
+
+/**
+ * Initializes and returns the GoogleGenAI client.
+ * Throws an error if the API key is not available.
+ * This function ensures the main app can run even if AI features are not configured.
+ */
+const getAiClient = (): GoogleGenAI => {
+  if (!ai) {
+    // For Vite projects, environment variables exposed to the client
+    // MUST be prefixed with VITE_ and are accessed via import.meta.env.
+    // FIX: Per coding guidelines, use process.env.API_KEY. This also resolves the TypeScript error.
+    const apiKey = process.env.API_KEY;
+
+    if (!apiKey) {
+      // This user-friendly error will be caught by the UI component (TeacherPanel)
+      // and displayed to the user without crashing the entire application.
+      // FIX: Updated error message to reflect the correct environment variable name.
+      throw new Error("Gemini API anahtarı bulunamadı. Lütfen 'API_KEY' ortam değişkenini ayarlayın.");
+    }
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
+};
+
 
 const getQuizSchema = () => ({
   type: Type.OBJECT,
@@ -67,7 +92,9 @@ export const generateQuestionWithAI = async (
   count: number,
   imageData?: { mimeType: string; data: string }
 ): Promise<Omit<Question, 'id' | 'grade' | 'topic' | 'difficulty' | 'type'>[]> => {
-  // FIX: Removed API key check as per guidelines assuming it's always available.
+  // Get the AI client only when this function is called.
+  const aiClient = getAiClient();
+  
   const promptText = `
     Lütfen aşağıdaki kriterlere ve sağlanan görsele uygun ${count} adet sosyal bilgiler bilgi yarışması sorusu oluştur:
     - Sınıf Seviyesi: ${grade}. sınıf
@@ -123,7 +150,7 @@ export const generateQuestionWithAI = async (
     items: singleQuestionSchema,
   };
 
-  const response = await ai.models.generateContent({
+  const response = await aiClient.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: contents,
     config: {
@@ -147,7 +174,9 @@ export const generateQuestionWithAI = async (
 export const extractQuestionFromImage = async (
     imageData: { mimeType: string; data: string }
 ): Promise<(Omit<QuizQuestion, 'id' | 'grade' | 'topic' | 'type' | 'kazanımId' | 'imageUrl'> & { visualContext?: { x: number; y: number; width: number; height: number; } })[]> => {
-    // FIX: Removed API key check as per guidelines assuming it's always available.
+    // Get the AI client only when this function is called.
+    const aiClient = getAiClient();
+
     const promptText = `
         Sen eğitim materyalleri için uzman bir OCR (Optik Karakter Tanıma) ve analiz aracısın.
         Sağlanan görseli analiz et. Bu görsel, üzerinde doğru cevapları bir şekilde işaretlenmiş (örneğin daire içine alınmış, üzeri çizilmiş, tik atılmış vb.) birden fazla çoktan seçmeli soru içerebilir.
@@ -207,7 +236,7 @@ export const extractQuestionFromImage = async (
         items: extractionQuizSchema,
     };
 
-    const response = await ai.models.generateContent({
+    const response = await aiClient.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: contents,
         config: {

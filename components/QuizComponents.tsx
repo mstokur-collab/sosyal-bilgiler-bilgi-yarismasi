@@ -6,6 +6,7 @@ import { Button, Modal } from './UI';
 
 const QUESTION_TIME_DEFAULT = 30;
 const QUESTION_TIME_MATCHING = 45;
+const MASTER_TIME_DEFAULT = 120; // 2 minutes for timed challenge
 
 // FIX: Added missing 'AnswerState' interface definition.
 interface AnswerState {
@@ -13,6 +14,34 @@ interface AnswerState {
   isCorrect: boolean;
   shuffledOptions?: string[];
 }
+
+// --- Dynamic Font Sizing Hook ---
+const useFitText = (text: string) => {
+    const textRef = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => {
+        const el = textRef.current;
+        if (!el) return;
+
+        const container = el.parentElement;
+        if (!container) return;
+
+        const isMobile = window.innerWidth <= 680;
+        const maxFontSize = isMobile ? 20 : 22;
+        const minFontSize = 10;
+        let currentSize = maxFontSize;
+
+        // Reset font size before measuring
+        el.style.fontSize = `${currentSize}px`;
+
+        // Decrease font size until it fits
+        while (el.scrollHeight > container.clientHeight && currentSize > minFontSize) {
+            currentSize -= 0.5;
+            el.style.fontSize = `${currentSize}px`;
+        }
+
+    }, [text]); // Rerun when text changes
+    return textRef;
+};
 
 // --- Redesigned Matching View Component ---
 
@@ -140,15 +169,13 @@ const MatchingView: React.FC<{
     };
 
     return (
-        <div className="flex flex-col h-full w-full items-center">
-             <div className="question-text-container py-2 flex-shrink-0">
-                <div className="question-text text-lg sm:text-xl">{question.question || "Aşağıdaki ifadeleri doğru şekilde eşleştirin."}</div>
+        <>
+            <div className="question-text-container">
+                 <div className="question-text">{question.question || "Aşağıdaki ifadeleri doğru şekilde eşleştirin."}</div>
             </div>
-            
             <div 
                 ref={containerRef} 
-                className="flex-grow w-full flex p-2 gap-2 bg-slate-900/30 border border-slate-700 rounded-lg -mx-6"
-                style={{width: 'calc(100% + 48px)'}}
+                className="flex-grow w-full flex p-2 gap-2"
             >
                 <div className="flex-1 grid gap-2" style={{ gridTemplateRows: `repeat(${question.pairs.length}, 1fr)`}}>
                     {leftItems.map(term => (
@@ -176,7 +203,7 @@ const MatchingView: React.FC<{
                     75% { transform: translateX(6px); }
                 }
             `}</style>
-        </div>
+        </>
     );
 };
 
@@ -191,39 +218,91 @@ interface GameScreenProps {
 }
 
 export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onGameEnd, groupNames }) => {
+    const { quizMode = 'klasik' } = settings;
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+    const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
+
+    // Mode-specific state
     const [score, setScore] = useState(0);
     const [groupScores, setGroupScores] = useState({ grup1: 0, grup2: 0 });
-    const [activeGroup, setActiveGroup] = useState<'grup1' | 'grup2'>('grup1');
+    const [streak, setStreak] = useState(0);
+    const [masterTimeLeft, setMasterTimeLeft] = useState(MASTER_TIME_DEFAULT);
     const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_DEFAULT);
+
+    // Common state
     const [answers, setAnswers] = useState<Record<number, AnswerState>>({});
     const [showEndConfirm, setShowEndConfirm] = useState(false);
     const [jokers, setJokers] = useState({ fiftyFifty: true, addTime: true, skip: true });
     const [jokerEffects, setJokerEffects] = useState<Record<number, { disabledOptions: string[] }>>({});
     const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
 
-    const questionTextRef = useRef<HTMLDivElement>(null);
     const audioCtxRef = useRef<AudioContext | null>(null);
-
     const isGroupMode = settings.competitionMode === 'grup';
-    const currentQuestion = questions[currentQuestionIndex];
+    const activeGroup = useMemo(() => {
+        if (!isGroupMode) return 'grup1'; // Not used in individual mode
+        const totalAnswers = Object.keys(answers).length;
+        return totalAnswers % 2 === 0 ? 'grup1' : 'grup2';
+    }, [isGroupMode, answers]);
+    
+    useEffect(() => {
+        // Shuffle questions for all modes except classic for variety
+        if (quizMode !== 'klasik') {
+            setShuffledQuestions([...questions].sort(() => Math.random() - 0.5));
+        } else {
+            setShuffledQuestions(questions);
+        }
+        setCurrentQuestionIndex(0);
+        setAnswers({});
+        setScore(0);
+        setStreak(0);
+        setMasterTimeLeft(MASTER_TIME_DEFAULT);
+    }, [questions, quizMode]);
+
+    const totalQuestions = useMemo(() => shuffledQuestions.length, [shuffledQuestions]);
+    const currentQuestion = shuffledQuestions[currentQuestionIndex];
     const currentAnswerState = answers[currentQuestionIndex];
     const isAnswered = !!currentAnswerState;
 
+    const questionTextForSizing = (currentQuestion?.type === 'quiz' ? (currentQuestion as QuizQuestion).question : (currentQuestion as FillInQuestion)?.sentence) || '';
+    const questionTextRef = useFitText(questionTextForSizing);
+
     const { grup1: grup1Name = 'Grup 1', grup2: grup2Name = 'Grup 2' } = groupNames || {};
+    
+    const finishGame = useCallback(() => {
+        let finalScore = 0;
+        if (quizMode === 'zamana-karsi') {
+            // FIX: Explicitly type 'a' as AnswerState to resolve 'isCorrect does not exist on unknown' error.
+            finalScore = Object.values(answers).filter((a: AnswerState) => a.isCorrect).length * 10;
+        } else if (quizMode === 'hayatta-kalma') {
+            finalScore = streak;
+        } else if (isGroupMode) {
+            finalScore = Math.max(groupScores.grup1, groupScores.grup2);
+        } else {
+            finalScore = score;
+        }
+        onGameEnd(finalScore, isGroupMode ? groupScores : undefined);
+    }, [quizMode, streak, score, groupScores, isGroupMode, onGameEnd, answers]);
+
+    const goToNextQuestion = useCallback(() => {
+        if (currentQuestionIndex < totalQuestions - 1) {
+            setCurrentQuestionIndex(prev => prev + 1);
+        } else {
+            if (quizMode !== 'zamana-karsi') {
+                finishGame();
+            }
+        }
+    }, [currentQuestionIndex, totalQuestions, finishGame, quizMode]);
 
     const optionsToShow = useMemo(() => {
         if (currentAnswerState?.shuffledOptions) return currentAnswerState.shuffledOptions;
+        if (!currentQuestion) return [];
         
-        if (currentQuestion?.type === 'quiz') {
-            const quizQuestion = currentQuestion as QuizQuestion;
-            return [...quizQuestion.options].sort(() => Math.random() - 0.5);
+        if (currentQuestion.type === 'quiz') {
+            return [...currentQuestion.options].sort(() => Math.random() - 0.5);
         }
-        if (currentQuestion?.type === 'fill-in') {
-            const fillInQuestion = currentQuestion as FillInQuestion;
-            return [fillInQuestion.answer, ...fillInQuestion.distractors].sort(() => Math.random() - 0.5);
+        if (currentQuestion.type === 'fill-in') {
+            return [currentQuestion.answer, ...currentQuestion.distractors].sort(() => Math.random() - 0.5);
         }
-    
         return [];
     }, [currentQuestion, currentAnswerState]);
 
@@ -266,96 +345,104 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     }, []);
 
     const handleAnswer = useCallback((isCorrect: boolean, selected: any, shuffledOptions?: string[]) => {
-        const alreadyAnswered = answers[currentQuestionIndex];
-        if (alreadyAnswered) return;
+        // In timed mode, allow changing answer. In others, only answer once.
+        if (isAnswered && quizMode !== 'zamana-karsi') return;
 
-        if (currentQuestion.type !== 'matching') {
-            playSound(isCorrect ? 'correct' : 'incorrect');
-        }
+        playSound(isCorrect ? 'correct' : 'incorrect');
+        setAnswers(prev => ({ ...prev, [currentQuestionIndex]: { selected, isCorrect, shuffledOptions } }));
 
-        if (isCorrect) {
-            const points = 10 + Math.floor(timeLeft / 2);
-            if (isGroupMode) {
-                setGroupScores(prev => ({ ...prev, [activeGroup]: prev[activeGroup] + points }));
+        if (quizMode === 'hayatta-kalma') {
+            if (isCorrect) {
+                // Only update streak if it's the first time answering this question correctly
+                if (!isAnswered) setStreak(prev => prev + 1);
             } else {
-                setScore(prev => prev + points);
+                setTimeout(finishGame, 1000); // Game over
+            }
+        } else if (quizMode === 'zamana-karsi') {
+            // Score is calculated at the end. Just record the answer.
+        } else { // Klasik mod
+            if (!isAnswered) { // Only award points once
+                if (isCorrect) {
+                    const points = 10 + Math.floor(timeLeft / 2);
+                    if (isGroupMode) {
+                        setGroupScores(prev => ({ ...prev, [activeGroup]: prev[activeGroup] + points }));
+                    } else {
+                        setScore(prev => prev + points);
+                    }
+                }
             }
         }
-        setAnswers(prev => ({ ...prev, [currentQuestionIndex]: { selected, isCorrect, shuffledOptions } }));
-        if (isGroupMode) setActiveGroup(prev => (prev === 'grup1' ? 'grup2' : 'grup1'));
-        
-    }, [answers, currentQuestionIndex, currentQuestion.type, timeLeft, isGroupMode, activeGroup, playSound]);
+    }, [answers, currentQuestionIndex, quizMode, timeLeft, isGroupMode, activeGroup, playSound, finishGame, isAnswered]);
 
 
-    // Timer Effect
+    // Timers Effect
     useEffect(() => {
-        if (isAnswered) return;
-        if (timeLeft > 0) {
-            const timer = setTimeout(() => setTimeLeft(prev => prev - 1), 1000);
-            if (timeLeft <= 10) playSound('tick');
-            return () => clearTimeout(timer);
-        } else {
-            handleAnswer(false, { timedOut: true }, optionsToShow);
+        if (quizMode === 'zamana-karsi') {
+            if (masterTimeLeft > 0 && totalQuestions > 0) {
+                const timer = setTimeout(() => setMasterTimeLeft(prev => prev - 1), 1000);
+                if (masterTimeLeft <= 10) playSound('tick');
+                return () => clearTimeout(timer);
+            } else if (totalQuestions > 0) {
+                finishGame();
+            }
+        } else { // Klasik and Hayatta Kalma
+            if (isAnswered || totalQuestions === 0) return;
+            if (timeLeft > 0) {
+                const timer = setTimeout(() => setTimeLeft(prev => prev - 1), 1000);
+                if (timeLeft <= 10) playSound('tick');
+                return () => clearTimeout(timer);
+            } else {
+                handleAnswer(false, { timedOut: true }, optionsToShow);
+            }
         }
-    }, [timeLeft, isAnswered, playSound, handleAnswer, optionsToShow]);
+    }, [timeLeft, masterTimeLeft, isAnswered, playSound, handleAnswer, quizMode, finishGame, totalQuestions, optionsToShow]);
 
     // Question Change Effect
     useEffect(() => {
-        const time = currentQuestion.type === 'matching' ? QUESTION_TIME_MATCHING : QUESTION_TIME_DEFAULT;
-        setTimeLeft(time);
-    }, [currentQuestionIndex, currentQuestion.type]);
-
-    useLayoutEffect(() => {
-        const textEl = questionTextRef.current;
-        if (!textEl || currentQuestion?.type !== 'quiz') return;
-        
-        const container = textEl.parentElement;
-        if (!container) return;
-        
-        const words = (currentQuestion as QuizQuestion).question.trim().split(/\s+/).length;
-        const maxSize = 22;
-        const minSize = 14;
-        let size = Math.max(minSize, maxSize - Math.max(0, words - 30) * 0.15);
-        textEl.style.fontSize = `${size}px`;
-
-        while (textEl.scrollHeight > container.clientHeight && size > minSize) {
-            size -= 0.5;
-            textEl.style.fontSize = `${size}px`;
+        if (quizMode === 'klasik' || quizMode === 'hayatta-kalma') {
+            let time = currentQuestion?.type === 'matching' ? QUESTION_TIME_MATCHING : QUESTION_TIME_DEFAULT;
+            if (quizMode === 'hayatta-kalma') {
+                time = Math.max(10, time - streak); // Gets harder as you go
+            }
+            setTimeLeft(time);
         }
-    }, [currentQuestion]);
+    }, [currentQuestionIndex, currentQuestion?.type, quizMode, streak]);
     
     const handlePrev = () => { if (currentQuestionIndex > 0) setCurrentQuestionIndex(prev => prev - 1); };
-    const handleNext = () => { if (currentQuestionIndex < questions.length - 1) setCurrentQuestionIndex(prev => prev + 1); };
-
+    
     const useFiftyFifty = () => {
-        if (!jokers.fiftyFifty || currentQuestion.type !== 'quiz' || isAnswered) return;
+        if (!jokers.fiftyFifty || currentQuestion.type !== 'quiz' || (isAnswered && quizMode !== 'zamana-karsi')) return;
         setJokers(prev => ({ ...prev, fiftyFifty: false }));
         
         const incorrectOptions = optionsToShow.filter(opt => opt !== (currentQuestion as QuizQuestion).answer);
         const disabledOptions = incorrectOptions.sort(() => 0.5 - Math.random()).slice(0, 2);
 
-        setJokerEffects(prev => ({
-            ...prev,
-            [currentQuestionIndex]: {
-                disabledOptions: disabledOptions
-            }
-        }));
+        setJokerEffects(prev => ({ ...prev, [currentQuestionIndex]: { disabledOptions }}));
     };
 
     const useAddTime = () => {
-        if (!jokers.addTime || isAnswered) return;
-        setTimeLeft(prev => prev + 15);
+        if (!jokers.addTime || (isAnswered && quizMode !== 'zamana-karsi')) return;
+        if (quizMode === 'zamana-karsi') {
+            setMasterTimeLeft(prev => prev + 15);
+        } else {
+            setTimeLeft(prev => prev + 15);
+        }
         setJokers(prev => ({ ...prev, addTime: false }));
     };
     
     const useSkip = () => {
-        if (!jokers.skip || isAnswered) return;
-        handleAnswer(false, { skipped: true });
+        if (!jokers.skip || (isAnswered && quizMode === 'hayatta-kalma')) return;
         setJokers(prev => ({ ...prev, skip: false }));
+
+        if (quizMode === 'hayatta-kalma') {
+            handleAnswer(false, { skipped: true });
+        } else { // Klasik and Zamana Karsi
+            goToNextQuestion();
+        }
     }
 
     const renderQuestionContent = () => {
-        if (!currentQuestion) return <div className="question-text">Sorular yükleniyor...</div>;
+        if (!currentQuestion) return null;
 
         switch (currentQuestion.type) {
             case 'quiz': {
@@ -363,7 +450,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                 const disabledByJokerOptions = jokerEffects[currentQuestionIndex]?.disabledOptions || [];
                 
                 const selectAnswer = (option: string) => {
-                    if (isAnswered) return;
+                    if (isAnswered && quizMode !== 'zamana-karsi') return;
                     handleAnswer(option === quizQuestion.answer, option, optionsToShow);
                 };
                 
@@ -382,7 +469,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                             <img 
                                 src={quizQuestion.imageUrl} 
                                 alt="Soru görseli (büyütmek için tıklayın)" 
-                                className="max-h-52 w-auto mx-auto rounded-lg mb-4 object-contain cursor-pointer transition-transform hover:scale-105"
+                                className="max-h-52 w-auto mx-auto rounded-lg mb-2 object-contain cursor-pointer transition-transform hover:scale-105"
                                 onClick={() => setLightboxImageUrl(quizQuestion.imageUrl)}
                             />
                         )}
@@ -391,7 +478,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                         </div>
                         <div className="answer-options">
                             {optionsToShow.map((option) => (
-                                <button key={option} onClick={() => selectAnswer(option)} disabled={isAnswered || disabledByJokerOptions.includes(option)} className={`option ${getOptionClass(option)}`}>
+                                <button key={option} onClick={() => selectAnswer(option)} disabled={(isAnswered && quizMode !== 'zamana-karsi') || disabledByJokerOptions.includes(option)} className={`option ${getOptionClass(option)}`}>
                                     {option}
                                 </button>
                             ))}
@@ -400,14 +487,16 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                 );
             }
             case 'matching':
-                return <MatchingView key={currentQuestion.id} question={currentQuestion} onAnswer={handleAnswer} answerState={currentAnswerState} playSound={playSound} />;
+                const onMatchingAnswer = (isCorrect: boolean, selected: any) => {
+                     handleAnswer(isCorrect, selected);
+                }
+                return <MatchingView key={currentQuestion.id} question={currentQuestion} onAnswer={onMatchingAnswer} answerState={currentAnswerState} playSound={playSound} />;
             
             case 'fill-in': {
                 const fillInQuestion = currentQuestion as FillInQuestion;
-                const [part1, part2] = useMemo(() => fillInQuestion.sentence.split('___'), [fillInQuestion.sentence]);
 
                 const selectAnswer = (option: string) => {
-                    if (isAnswered) return;
+                    if (isAnswered && quizMode !== 'zamana-karsi') return;
                     handleAnswer(option === fillInQuestion.answer, option, optionsToShow);
                 };
 
@@ -421,18 +510,17 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                 return (
                     <>
                         <div className="question-text-container">
-                             <div 
-                                ref={questionTextRef} 
-                                className="question-text text-2xl sm:text-3xl leading-relaxed text-center p-4 flex flex-wrap items-center justify-center"
-                             >
-                                <span>{part1}</span>
-                                <span 
-                                    className={`inline-block font-bold text-2xl sm:text-4xl mx-2 px-3 py-1 rounded-lg transition-colors duration-500 ${isAnswered ? (currentAnswerState.isCorrect ? 'bg-green-900/50 text-green-200' : 'bg-red-900/50 text-red-300') : 'bg-slate-700/80 text-slate-300'}`}
-                                    style={{ minWidth: '150px' }}
-                                >
-                                    {isAnswered ? currentAnswerState.selected : '...'}
-                                </span>
-                                <span>{part2}</span>
+                            <div ref={questionTextRef} className="question-text">
+                                <div className="leading-relaxed text-center flex flex-wrap items-center justify-center">
+                                    <span>{fillInQuestion.sentence.split('___')[0]}</span>
+                                    <span 
+                                        className={`inline-block font-bold mx-2 px-3 py-1 rounded-lg transition-colors duration-500 ${isAnswered ? (currentAnswerState.isCorrect ? 'bg-green-900/50 text-green-200' : 'bg-red-900/50 text-red-300') : 'bg-slate-700/80 text-slate-300'}`}
+                                        style={{ minWidth: '150px' }}
+                                    >
+                                        {isAnswered ? currentAnswerState.selected : '...'}
+                                    </span>
+                                    <span>{fillInQuestion.sentence.split('___')[1]}</span>
+                                </div>
                             </div>
                         </div>
                         <div className="answer-options grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
@@ -440,7 +528,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                                 <button 
                                     key={option} 
                                     onClick={() => selectAnswer(option)} 
-                                    disabled={isAnswered} 
+                                    disabled={isAnswered && quizMode !== 'zamana-karsi'} 
                                     className={`option justify-center ${getOptionClass(option)}`}
                                 >
                                     {option}
@@ -455,41 +543,68 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                 return <div className="p-4 text-center text-lg text-amber-300">Bilinmeyen soru tipi. Lütfen Çoktan Seçmeli modunu deneyin.</div>;
         }
     };
+    
+    const formatTime = (seconds: number) => {
+        const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+        const secs = String(seconds % 60).padStart(2, '0');
+        return `${mins}:${secs}`;
+    }
+
+    const prevDisabled = currentQuestionIndex === 0 || quizMode === 'hayatta-kalma';
+    const nextDisabled = useMemo(() => {
+        if (currentQuestionIndex >= totalQuestions - 1) return true;
+        if (quizMode === 'hayatta-kalma') {
+            return !isAnswered || !currentAnswerState.isCorrect;
+        }
+        if (quizMode === 'klasik') {
+            return !isAnswered;
+        }
+        return false; // Free navigation for timed mode
+    }, [currentQuestionIndex, totalQuestions, quizMode, isAnswered, currentAnswerState]);
+
+    const jokerDisabled = isAnswered && quizMode !== 'zamana-karsi';
 
     return (
         <div className="quiz-container">
             <div className="top-nav">
-                <button className="nav-btn" onClick={handlePrev} disabled={currentQuestionIndex === 0}>Önceki</button>
+                <button className="nav-btn" onClick={handlePrev} disabled={prevDisabled}>Önceki</button>
                 <div className="progress-bar-container">
-                    <div className="progress-bar" style={{ width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }}></div>
+                    <div className="progress-bar" style={{ width: `${((currentQuestionIndex + 1) / (totalQuestions || 1)) * 100}%` }}></div>
                 </div>
-                <button className="nav-btn" onClick={handleNext} disabled={currentQuestionIndex >= questions.length - 1 || !isAnswered}>Sonraki</button>
+                <button className="nav-btn" onClick={goToNextQuestion} disabled={nextDisabled}>Sonraki</button>
             </div>
 
             <div className="hud">
-                <div className="timer">{`00:${String(timeLeft).padStart(2, '0')}`}</div>
+                 {quizMode === 'zamana-karsi' ? (
+                     <div className="timer">{formatTime(masterTimeLeft)}</div>
+                 ) : (
+                     <div className="timer">{formatTime(timeLeft)}</div>
+                 )}
                 <div className="jokers">
                     {currentQuestion?.type === 'quiz' && (
-                         <button className="joker-btn" onClick={useFiftyFifty} disabled={!jokers.fiftyFifty || isAnswered}>50:50</button>
+                         <button className="joker-btn" onClick={useFiftyFifty} disabled={!jokers.fiftyFifty || jokerDisabled}>50:50</button>
                     )}
-                    <button className="joker-btn" onClick={useSkip} disabled={!jokers.skip || isAnswered}>Atla</button>
-                    <button className="joker-btn" onClick={useAddTime} disabled={!jokers.addTime || isAnswered}>+15sn</button>
+                    <button className="joker-btn" onClick={useSkip} disabled={!jokers.skip || (quizMode === 'hayatta-kalma' && isAnswered)}>Atla</button>
+                    <button className="joker-btn" onClick={useAddTime} disabled={!jokers.addTime || jokerDisabled}>+15sn</button>
                 </div>
-                {isGroupMode ? (
+                {quizMode === 'hayatta-kalma' ? (
+                     <div className="score">Seri: <span>{streak}</span></div>
+                ) : isGroupMode ? (
                     <div className="group-scores">
                         <span>{grup1Name}: {groupScores.grup1}</span> | <span>{grup2Name}: {groupScores.grup2}</span>
                     </div>
                 ) : (
-                    <div className="score">Skor: <span>{score}</span></div>
+                    <div className="score">Skor: <span>{quizMode === 'zamana-karsi' ? 
+// FIX: Explicitly type 'a' as AnswerState to resolve 'isCorrect does not exist on unknown' error.
+                    (Object.values(answers).filter((a: AnswerState) => a.isCorrect).length * 10) : score}</span></div>
                 )}
             </div>
-
-            <div className="question-card">
+            
+            <div key={currentQuestionIndex} className="question-card animate-question-transition">
                 {renderQuestionContent()}
-            </div>
-
-            <div className="footer">
-                <button className="finish-btn" onClick={() => setShowEndConfirm(true)}>🏁 Yarışmayı Bitir</button>
+                <div className="footer">
+                   <button className="finish-btn" onClick={() => setShowEndConfirm(true)}>🏁 Yarışmayı Bitir</button>
+                </div>
             </div>
             
             {lightboxImageUrl && (
@@ -510,7 +625,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                 isOpen={showEndConfirm}
                 title="Yarışmayı Bitir"
                 message="Yarışmayı bitirmek istediğinizden emin misiniz?"
-                onConfirm={() => onGameEnd(score, isGroupMode ? groupScores : undefined)}
+                onConfirm={finishGame}
                 onCancel={() => setShowEndConfirm(false)}
             />
         </div>

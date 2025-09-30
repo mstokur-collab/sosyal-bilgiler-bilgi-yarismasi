@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // FIX: Imported 'CompetitionMode' type to resolve a 'Cannot find name' error on line 77.
-import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode } from './types';
+import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode } from './types';
 import { Screen, Button, BackButton, DeveloperSignature } from './components/UI';
 import { GameScreen } from './components/QuizComponents';
 import { TeacherPanel } from './components/TeacherPanel';
@@ -192,7 +192,7 @@ const initialQuestions: Question[] = [
     "kazanımId": "SB.6.1.1",
     "difficulty": "kolay",
     "type": "quiz",
-    "question": "On iki yaşındaki Arda, babası, annesi ve kardeşiyle birlikte akşam yemeğini yedi. Sonrasında odasına geçip ödevlerini tamamladı. Ertesi gün okulda derslerine odaklanarak öğretmeninin anlattıklarını dikkatle dinledi ve grup çalışmasında aktif rol aldı. Teneffüste ise arkadaşlarıyla basketbol oynadı. Bu anlatıma göre aşağıdakilerden hangisi Arda'nın sahip olduğu haklardan biri olarak gösterilebilir?",
+    "question": "On iki yaşındaki Arda, babası, annesi ve kardeşiyle birlikte akşam yemeğini yedi. Sonrasında odasına geçip ödevlerini tamamladı. Ertesi gün okulda derslerine odaklanarak öğretmeninin anlattıklarını dikkatle dinledi ve grup çalışmasında aktif rol aldı. Teneffüste ise arkadaşleriyle basketbol oynadı. Bu anlatıma göre aşağıdakilerden hangisi Arda'nın sahip olduğu haklardan biri olarak gösterilebilir?",
     "options": [
       "Derslerini dikkatli bir şekilde dinlemek",
       "Grup çalışmasında üzerine düşeni yapmak",
@@ -1452,7 +1452,7 @@ export default function App() {
     const [gameSettings, setGameSettings] = useState<GameSettings>({});
     const [questions, setQuestions] = usePersistentState<Question[]>('socialStudiesQuestions', initialQuestions);
     const [highScores, setHighScores] = usePersistentState<HighScore[]>('socialStudiesHighScores', []);
-    const [lastGameResult, setLastGameResult] = useState<{score: number; finalGroupScores?: {grup1: number, grup2: number}}>({score: 0});
+    const [lastGameResult, setLastGameResult] = useState<{score: number; finalGroupScores?: {grup1: number, grup2: number}; quizMode?: QuizMode}>({score: 0});
     const [questionsForGame, setQuestionsForGame] = useState<Question[]>([]);
     
     useEffect(() => {
@@ -1461,7 +1461,7 @@ export default function App() {
     
     const handleGameEnd = useCallback((score: number, finalGroupScores?: { grup1: number, grup2: number }) => {
         const finalScore = finalGroupScores ? Math.max(finalGroupScores.grup1, finalGroupScores.grup2) : score;
-        setLastGameResult({ score, finalGroupScores });
+        setLastGameResult({ score: finalScore, finalGroupScores, quizMode: gameSettings.quizMode });
 
         if (finalScore > 0) {
             let entryName = playerName;
@@ -1504,7 +1504,6 @@ export default function App() {
         const filtered = questions.filter(q =>
             q.grade == gameSettings.grade &&
             q.topic == gameSettings.topic &&
-            // FIX: Corrected property name to 'kazanımId' to match the type definition.
             q.kazanımId == gameSettings.kazanımId &&
             q.type == gameSettings.gameMode &&
             q.difficulty == gameSettings.difficulty
@@ -1517,11 +1516,11 @@ export default function App() {
         setGameSettings({
             grade: question.grade,
             topic: question.topic,
-            // FIX: Corrected property name to 'kazanımId' to match the 'GameSettings' type definition.
             kazanımId: question.kazanımId,
             competitionMode: 'bireysel',
             difficulty: question.difficulty,
             gameMode: question.type,
+            quizMode: 'klasik',
         });
         setQuestionsForGame([question]);
         setPlayerName('Öğretmen');
@@ -1768,13 +1767,66 @@ export default function App() {
                                 icon="🙋‍♂️"
                                 title="Bireysel Yarışma"
                                 description="Kendi bilginizi test edin ve en yüksek skoru hedefleyin."
-                                onClick={() => { setGameSettings(s => ({ ...s, competitionMode: 'bireysel' })); setScreen('player-name'); }}
+                                onClick={() => { setGameSettings(s => ({ ...s, competitionMode: 'bireysel' })); setScreen('quiz-mode'); }}
                             />
                             <CompetitionModeCard
                                 icon="👥"
                                 title="Grup Yarışması"
                                 description="Arkadaşlarınızla takım olun ve rekabetin tadını çıkarın."
-                                onClick={() => { setGameSettings(s => ({ ...s, competitionMode: 'grup' })); setScreen('player-name'); }}
+                                onClick={() => { setGameSettings(s => ({ ...s, competitionMode: 'grup' })); setScreen('quiz-mode'); }}
+                            />
+                        </div>
+                    </Screen>
+                );
+            case 'quiz-mode':
+                const QuizModeCard: React.FC<{
+                    icon: string;
+                    title: string;
+                    description: string;
+                    variant: 'blue' | 'purple' | 'orange';
+                    onClick: () => void;
+                }> = ({ icon, title, description, variant, onClick }) => {
+                    const variantClasses = {
+                        blue: 'border-sky-500/80 hover:border-sky-400',
+                        purple: 'border-violet-500/80 hover:border-violet-400',
+                        orange: 'border-orange-500/80 hover:border-orange-400',
+                    };
+                    return (
+                        <button
+                            onClick={onClick}
+                            className={`flex flex-col items-center p-6 text-center bg-slate-800/40 border-2 rounded-2xl transition-all duration-300 hover:bg-slate-700/60 hover:scale-105 cursor-pointer ${variantClasses[variant]}`}
+                        >
+                            <div className="text-5xl mb-4">{icon}</div>
+                            <h3 className="text-2xl font-bold text-white">{title}</h3>
+                            <p className="text-slate-300 mt-2 text-sm flex-grow">{description}</p>
+                        </button>
+                    );
+                };
+                 return (
+                     <Screen id="quiz-mode-select" isActive={true}>
+                        <BackButton onClick={() => setScreen('competition-mode')} />
+                        <h2 className="text-3xl sm:text-4xl font-bold mb-8">🎲 Oyun Modunu Seçin</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
+                            <QuizModeCard
+                                icon="📚"
+                                title="Klasik"
+                                description="Belirlenen sayıda soruyu cevaplayın. Her soru için ayrı süreniz var."
+                                variant="blue"
+                                onClick={() => { setGameSettings(s => ({ ...s, quizMode: 'klasik' })); setScreen('player-name'); }}
+                            />
+                            <QuizModeCard
+                                icon="⏱️"
+                                title="Zamana Karşı"
+                                description="120 saniyede en fazla doğruyu yapmaya çalışın. Hız ve bilgi bir arada!"
+                                variant="purple"
+                                onClick={() => { setGameSettings(s => ({ ...s, quizMode: 'zamana-karsi' })); setScreen('player-name'); }}
+                            />
+                            <QuizModeCard
+                                icon="❤️‍🔥"
+                                title="Hayatta Kalma"
+                                description="Tek yanlış cevap oyunun sonu! En uzun doğru serisini yakalayın."
+                                variant="orange"
+                                onClick={() => { setGameSettings(s => ({ ...s, quizMode: 'hayatta-kalma' })); setScreen('player-name'); }}
                             />
                         </div>
                     </Screen>
@@ -1783,7 +1835,7 @@ export default function App() {
                 const isGroupMode = gameSettings.competitionMode === 'grup';
                 return (
                     <Screen id="player-name-screen" isActive={true}>
-                        <BackButton onClick={() => setScreen('competition-mode')} />
+                        <BackButton onClick={() => setScreen('quiz-mode')} />
                         <h2 className="text-3xl font-bold mb-6">{isGroupMode ? '👥 Grup İsimlerini Girin' : '👤 Oyuncu Adınızı Girin'}</h2>
                         <form onSubmit={(e) => { e.preventDefault(); startGame(); }} className="flex flex-col items-center gap-6 w-full max-w-sm">
                             {isGroupMode ? (
@@ -1843,7 +1895,10 @@ export default function App() {
                     </Screen>
                 );
             case 'end':
-                const { score, finalGroupScores } = lastGameResult;
+                const { score, finalGroupScores, quizMode } = lastGameResult;
+                const isSurvival = quizMode === 'hayatta-kalma';
+                const scoreLabel = isSurvival ? 'Başarı Serin' : 'Toplam Skorun';
+
                 return (
                     <Screen id="end-screen" isActive={true}>
                         <h2 className="text-5xl font-bold mb-4">🎉 Oyun Bitti!</h2>
@@ -1857,7 +1912,7 @@ export default function App() {
                                     </p>
                                 </>
                             ) : (
-                                <p>🎯 Toplam Skorun: {score}</p>
+                                <p>🎯 {scoreLabel}: {score}</p>
                             )}
                         </div>
                         <div className="flex flex-col sm:flex-row gap-4">
@@ -1878,7 +1933,7 @@ export default function App() {
                                         <span className="text-2xl font-bold w-8">{index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}</span>
                                         <div>
                                             <p className="font-bold text-lg">{hs.name}</p>
-                                            <p className="text-sm text-slate-300">{hs.settings.topic}</p>
+                                            <p className="text-sm text-slate-300">{hs.settings.topic} ({hs.settings.quizMode})</p>
                                         </div>
                                     </div>
                                     <p className="font-bold text-xl">{hs.score}</p>

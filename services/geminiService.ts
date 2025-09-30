@@ -12,15 +12,13 @@ let ai: GoogleGenAI | null = null;
  */
 const getAiClient = (): GoogleGenAI => {
   if (!ai) {
-    // KULLANICI İÇİN NOT: Lütfen API anahtarınızı aşağıdaki tırnak işaretlerinin arasına yapıştırın.
-    // Bu yöntem, yalnızca uygulamanın halka açık olmayan, güvenli bir ortamda (örneğin okul tahtası)
-    // kullanılacağı varsayılarak basitleştirilmiştir.
-    const apiKey = "AIzaSyCSl_xSycRRGOAnPjHGPNHvPmauKW35iWI";
+    // FIX: API key must be retrieved from environment variables as per guidelines.
+    const apiKey = process.env.API_KEY;
 
-    if (!apiKey || apiKey === "API_ANAHTARINIZI_BURAYA_YAPIŞTIRIN") {
+    if (!apiKey) {
       // This user-friendly error will be caught by the TeacherPanel component
       // and displayed to the user without crashing the entire application.
-      throw new Error("Gemini API anahtarı bulunamadı. Lütfen services/geminiService.ts dosyasına anahtarınızı girin.");
+      throw new Error("Gemini API anahtarı bulunamadı. Lütfen `API_KEY` ortam değişkenini ayarlayın.");
     }
     ai = new GoogleGenAI({ apiKey });
   }

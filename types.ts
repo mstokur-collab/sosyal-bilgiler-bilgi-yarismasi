@@ -1,4 +1,3 @@
-
 export type ScreenId = 
   | 'start' 
   | 'player-name' 
@@ -8,6 +7,7 @@ export type ScreenId =
   | 'competition-mode' 
   | 'difficulty-select' 
   | 'game-mode' 
+  | 'quiz-mode'
   | 'game' 
   | 'end' 
   | 'high-scores' 
@@ -16,6 +16,7 @@ export type ScreenId =
 export type Difficulty = 'kolay' | 'orta' | 'zor';
 export type CompetitionMode = 'bireysel' | 'grup';
 export type QuestionType = 'quiz' | 'fill-in' | 'matching';
+export type QuizMode = 'klasik' | 'zamana-karsi' | 'hayatta-kalma';
 
 export interface BaseQuestion {
   id: number;
@@ -61,6 +62,7 @@ export interface GameSettings {
   competitionMode?: CompetitionMode;
   difficulty?: Difficulty;
   gameMode?: QuestionType;
+  quizMode?: QuizMode;
 }
 
 export interface HighScore {

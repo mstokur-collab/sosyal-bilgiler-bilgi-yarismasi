@@ -705,9 +705,10 @@ interface TeacherPanelProps {
   questions: Question[];
   setQuestions: React.Dispatch<React.SetStateAction<Question[]>>;
   onSelectQuestion: (question: Question) => void;
+  onResetSolvedQuestions: () => void;
 }
 
-export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuestions, onSelectQuestion }) => {
+export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuestions, onSelectQuestion, onResetSolvedQuestions }) => {
   const [activeTab, setActiveTab] = useState<'manage' | 'add-single' | 'add-ai' | 'bulk'>('manage');
   const [searchTerm, setSearchTerm] = useState('');
   const [modal, setModal] = useState<{isOpen: boolean; onConfirm: () => void}>({isOpen: false, onConfirm: () => {}});
@@ -716,6 +717,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
   const [bulkMessage, setBulkMessage] = useState({ type: '', text: '' });
   const [generatedCode, setGeneratedCode] = useState('');
   const [showCodeModal, setShowCodeModal] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // State for example JSON generator
   const [exampleGrade, setExampleGrade] = useState<number>(5);
@@ -1048,9 +1050,14 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
                                     <Button onClick={handleBulkImport} className="w-full">📥 Soruları İçe Aktar</Button>
                                     <Button onClick={handleExportQuestions} variant="secondary" className="w-full">📤 Soruları Dışa Aktar</Button>
                                 </div>
-                                <Button onClick={handleGenerateCode} variant="warning" className="w-full">
-                                    {'<> Soruları Kalıcı Hale Getir (Koda Göm)'}
-                                </Button>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <Button onClick={handleGenerateCode} variant="warning" className="w-full">
+                                        {'<> Soruları Koda Göm'}
+                                    </Button>
+                                    <Button onClick={() => setShowResetConfirm(true)} variant="warning" className="w-full">
+                                      🔄 Çözülen Soruları Sıfırla
+                                    </Button>
+                                </div>
                             </div>
                             {bulkMessage.text && (
                                 <p className={`mt-4 text-center p-2 rounded-md whitespace-pre-wrap ${bulkMessage.type === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
@@ -1105,6 +1112,17 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
             isOpen={showCodeModal}
             code={generatedCode}
             onClose={() => setShowCodeModal(false)}
+        />
+        <Modal
+            isOpen={showResetConfirm}
+            title="Çözülen Soruları Sıfırla"
+            message="Bu işlem, daha önce çözülmüş tüm soruları tekrar oynanabilir hale getirecektir. Bu işlem geri alınamaz. Emin misiniz?"
+            onConfirm={() => {
+                onResetSolvedQuestions();
+                setShowResetConfirm(false);
+                setBulkMessage({ type: 'success', text: 'Çözülen sorular başarıyla sıfırlandı! Artık tüm sorular yeniden oynanabilir.' });
+            }}
+            onCancel={() => setShowResetConfirm(false)}
         />
     </div>
   );

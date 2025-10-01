@@ -1344,7 +1344,7 @@ const initialQuestions: Question[] = [
     "topic": "Birlikte Yaşamak",
     "kazanımId": "SB.6.1.3",
     "type": "quiz",
-    "question": "Kişinin kendi davranışlarının sonuçlarını üstlenmesine sorumluluk, bir konuya hassasiyet göstermesine ise duyarlılık denir. Buna göre aşağıdakilerden hangisi duyarlılık olarak tanımlanabilir?",
+    "question": "Kişinin kendi davranışlarının sonuçlarını üstlenmesine sorumluluk, bir konuya hassasiyet göstremesine ise duyarlılık denir. Buna göre aşağıdakilerden hangisi duyarlılık olarak tanımlanabilir?",
     "options": [
       "Ali'nin kendine ait odayı temiz tutması",
       "Ayşe'nin parktaki cam kırıklarını toplaması",
@@ -1454,10 +1454,24 @@ export default function App() {
     const [highScores, setHighScores] = usePersistentState<HighScore[]>('socialStudiesHighScores', []);
     const [lastGameResult, setLastGameResult] = useState<{score: number; finalGroupScores?: {grup1: number, grup2: number}; quizMode?: QuizMode}>({score: 0});
     const [questionsForGame, setQuestionsForGame] = useState<Question[]>([]);
+    const [solvedQuestionIds, setSolvedQuestionIds] = usePersistentState<number[]>('solvedQuestionIds', []);
     
     useEffect(() => {
         document.body.className = 'theme-dark';
     }, []);
+
+    const handleQuestionAnswered = useCallback((questionId: number) => {
+        setSolvedQuestionIds(prev => {
+            if (prev.includes(questionId)) {
+                return prev;
+            }
+            return [...prev, questionId];
+        });
+    }, [setSolvedQuestionIds]);
+
+    const resetSolvedQuestions = useCallback(() => {
+        setSolvedQuestionIds([]);
+    }, [setSolvedQuestionIds]);
     
     const handleGameEnd = useCallback((score: number, finalGroupScores?: { grup1: number, grup2: number }) => {
         const finalScore = finalGroupScores ? Math.max(finalGroupScores.grup1, finalGroupScores.grup2) : score;
@@ -1501,7 +1515,10 @@ export default function App() {
                 grup2: prev.grup2.trim() || 'Grup 2',
             }));
         }
-        const filtered = questions.filter(q =>
+        
+        const availableQuestions = questions.filter(q => !solvedQuestionIds.includes(q.id));
+
+        const filtered = availableQuestions.filter(q =>
             q.grade == gameSettings.grade &&
             q.topic == gameSettings.topic &&
             q.kazanımId == gameSettings.kazanımId &&
@@ -1885,12 +1902,13 @@ export default function App() {
                             settings={gameSettings} 
                             onGameEnd={handleGameEnd} 
                             groupNames={groupNames}
+                            onQuestionAnswered={handleQuestionAnswered}
                         />
                     </Screen>
                 ) : (
                      <Screen id="no-questions" isActive={true}>
                         <h2 className="text-2xl mb-4">Soru Bulunamadı</h2>
-                        <p className="mb-6">Seçtiğiniz kriterlere uygun soru bulunamadı.</p>
+                        <p className="mb-6">Seçtiğiniz kriterlere uygun, daha önce çözülmemiş soru bulunamadı.</p>
                         <Button onClick={() => setScreen('game-mode')}>Geri Dön</Button>
                     </Screen>
                 );
@@ -1947,7 +1965,12 @@ export default function App() {
                 return (
                     <Screen id="teacher-panel-screen" isActive={true} className="p-0 sm:p-0">
                          <BackButton onClick={() => setScreen('start')} />
-                         <TeacherPanel questions={questions} setQuestions={setQuestions} onSelectQuestion={handleSelectQuestion} />
+                         <TeacherPanel 
+                            questions={questions} 
+                            setQuestions={setQuestions} 
+                            onSelectQuestion={handleSelectQuestion}
+                            onResetSolvedQuestions={resetSolvedQuestions}
+                         />
                     </Screen>
                 );
             default:

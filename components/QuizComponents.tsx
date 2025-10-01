@@ -214,10 +214,11 @@ interface GameScreenProps {
   questions: Question[];
   settings: GameSettings;
   onGameEnd: (score: number, finalGroupScores?: { grup1: number, grup2: number }) => void;
+  onQuestionAnswered: (questionId: number) => void;
   groupNames?: { grup1: string, grup2: string };
 }
 
-export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onGameEnd, groupNames }) => {
+export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onGameEnd, onQuestionAnswered, groupNames }) => {
     const { quizMode = 'klasik' } = settings;
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
@@ -348,6 +349,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         // In timed mode, allow changing answer. In others, only answer once.
         if (isAnswered && quizMode !== 'zamana-karsi') return;
 
+        if (!isAnswered) {
+            onQuestionAnswered(currentQuestion.id);
+        }
+
         playSound(isCorrect ? 'correct' : 'incorrect');
         setAnswers(prev => ({ ...prev, [currentQuestionIndex]: { selected, isCorrect, shuffledOptions } }));
 
@@ -372,7 +377,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                 }
             }
         }
-    }, [answers, currentQuestionIndex, quizMode, timeLeft, isGroupMode, activeGroup, playSound, finishGame, isAnswered]);
+    }, [answers, currentQuestionIndex, quizMode, timeLeft, isGroupMode, activeGroup, playSound, finishGame, isAnswered, onQuestionAnswered, currentQuestion]);
 
 
     // Timers Effect

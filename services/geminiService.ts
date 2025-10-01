@@ -15,7 +15,7 @@ const getAiClient = (): GoogleGenAI => {
     // ÖNEMLİ: Kendi Gemini API anahtarınızı aşağıdaki tırnak işaretleri arasına yapıştırın.
     const apiKey = "AIzaSyCSl_xSycRRGOAnPjHGPNHvPmauKW35iWI";
 
-    if (!apiKey || apiKey === "AIzaSyCSl_xSycRRGOAnPjHGPNHvPmauKW35iWI") {
+    if (!apiKey || apiKey === "LÜTFEN_API_ANAHTARINIZI_BURAYA_YAPIŞTIRIN") {
       // This user-friendly error will be caught by the TeacherPanel component
       // and displayed to the user without crashing the entire application.
       throw new Error("Gemini API anahtarı bulunamadı. Lütfen `services/geminiService.ts` dosyasını düzenleyip kendi anahtarınızı girin.");

@@ -1460,6 +1460,18 @@ export default function App() {
         document.body.className = 'theme-dark';
     }, []);
 
+    useEffect(() => {
+        if (screen === 'game') {
+            document.documentElement.classList.add('game-on');
+        } else {
+            document.documentElement.classList.remove('game-on');
+        }
+
+        return () => {
+            document.documentElement.classList.remove('game-on');
+        };
+    }, [screen]);
+
     const handleQuestionAnswered = useCallback((questionId: number) => {
         setSolvedQuestionIds(prev => {
             if (prev.includes(questionId)) {
@@ -1980,8 +1992,8 @@ export default function App() {
     
     return (
         <main className="h-screen w-screen font-sans overflow-hidden">
-            <div className="relative w-full h-full p-2 sm:p-4">
-                <div className="w-full h-full bg-slate-900/30 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+            <div className="relative w-full h-full p-2 sm:p-4 main-container-padded">
+                <div className="w-full h-full bg-slate-900/30 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden main-container-rounded">
                     {renderScreen()}
                 </div>
             </div>

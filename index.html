@@ -311,6 +311,60 @@
       .animate-question-transition {
           animation: questionTransition 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
       }
+
+      /* Fullscreen for Smartboards */
+      @media (min-width: 1280px) {
+        html.game-on .main-container-padded {
+          padding: 0;
+        }
+        html.game-on .main-container-rounded {
+          border-radius: 0;
+        }
+        html.game-on #game-screen {
+          padding: 0 !important;
+        }
+        html.game-on .quiz-container {
+          width: 100%;
+          height: 100%;
+          max-width: none;
+          margin: 0;
+          padding: 40px;
+          gap: 24px;
+        }
+        html.game-on .question-text-container {
+          min-height: 160px;
+        }
+        html.game-on .question-text {
+          font-size: 32px;
+        }
+        html.game-on .option {
+          font-size: 1.25rem;
+          padding: 20px;
+          min-height: 90px;
+        }
+        html.game-on .answer-options {
+          max-width: 1200px; /* Prevent options from getting too wide */
+          width: 100%;
+          margin-left: auto;
+          margin-right: auto;
+        }
+        html.game-on .nav-btn, html.game-on .finish-btn {
+            padding: 14px 28px;
+            font-size: 1.1rem;
+        }
+        html.game-on .hud {
+            padding: 0 20px;
+            gap: 20px;
+        }
+        html.game-on .timer, html.game-on .score, html.game-on .group-scores {
+            font-size: 1.5rem;
+            padding: 12px 20px;
+        }
+        html.game-on .joker-btn {
+            font-size: 1rem;
+            padding: 10px 16px;
+        }
+      }
     </style>
 <script type="importmap">
 {

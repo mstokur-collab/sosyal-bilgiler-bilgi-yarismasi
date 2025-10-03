@@ -1,5 +1,5 @@
 {
-  "name": "Final Sosyal Bilgiler Bilgi Yarışması",
-  "description": "An interactive social studies quiz application for different grade levels, featuring multiple game modes, a high score tracker, and an AI-powered question generator for teachers.",
+  "name": "Eğitici Bilgi Yarışması",
+  "description": "Farklı sınıf seviyeleri ve dersler için çoktan seçmeli, boşluk doldurma ve eşleştirme gibi çeşitli oyun modları sunan etkileşimli bir bilgi yarışması uygulaması. Yüksek skor takibi ve öğretmenler için yapay zeka destekli soru üretme paneli içerir.",
   "requestFramePermissions": []
 }

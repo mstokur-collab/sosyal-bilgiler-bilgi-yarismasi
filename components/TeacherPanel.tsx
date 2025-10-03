@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Question, QuestionType, Difficulty, QuizQuestion, FillInQuestion, MatchingQuestion, MatchingPair } from '../types';
 import { Button, Modal } from './UI';
@@ -69,7 +70,8 @@ const cropImage = (
 
 const AIGenerator: React.FC<{
   onQuestionGenerated: (data: Partial<Question>[]) => void;
-}> = ({ onQuestionGenerated }) => {
+  selectedSubjectId: string;
+}> = ({ onQuestionGenerated, selectedSubjectId }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isExtracting, setIsExtracting] = useState(false);
     const [error, setError] = useState('');
@@ -82,7 +84,7 @@ const AIGenerator: React.FC<{
     const formRef = useRef<HTMLFormElement>(null);
 
 
-    const ogrenmeAlanlari = useMemo(() => curriculumData[selectedGrade] || [], [selectedGrade]);
+    const ogrenmeAlanlari = useMemo(() => curriculumData[selectedSubjectId]?.[selectedGrade] || [], [selectedGrade, selectedSubjectId]);
     
     const kazanımlar = useMemo(() => {
         if (!selectedOgrenmeAlani) return [];
@@ -93,7 +95,7 @@ const AIGenerator: React.FC<{
 
     useEffect(() => {
         setSelectedOgrenmeAlani('');
-    }, [selectedGrade]);
+    }, [selectedGrade, selectedSubjectId]);
     
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -126,7 +128,7 @@ const AIGenerator: React.FC<{
         const kazanımId = formData.get('ai-kazanım') as string;
         const ogrenmeAlaniName = formData.get('ai-ogrenme-alani') as string;
 
-        const selectedOgrenmeAlaniData = curriculumData[grade]?.find(oa => oa.name === ogrenmeAlaniName);
+        const selectedOgrenmeAlaniData = curriculumData[selectedSubjectId]?.[grade]?.find(oa => oa.name === ogrenmeAlaniName);
         const kazanımObject = selectedOgrenmeAlaniData?.altKonular[0]?.kazanımlar.find(k => k.id === kazanımId);
 
         if (!grade || !difficulty || !type || !kazanımObject || !ogrenmeAlaniName) {
@@ -147,8 +149,17 @@ const AIGenerator: React.FC<{
             
             const { grade, difficulty, type, count, kazanımObject, ogrenmeAlaniName } = formData;
             
-            // FIX: Removed redundant API key check; this is handled by the geminiService.
-            const generatedData = await generateQuestionWithAI(grade, kazanımObject.id, kazanımObject.text, difficulty, type, count, imageData ? { mimeType: imageData.mimeType, data: imageData.data } : undefined);
+            const generatedData = await generateQuestionWithAI(
+                grade, 
+                kazanımObject.id, 
+                kazanımObject.text, 
+                difficulty, 
+                type, 
+                count, 
+                selectedSubjectId,
+                imageData ? { mimeType: imageData.mimeType, data: imageData.data } : undefined
+            );
+
             const questionsWithMetadata = generatedData.map(q => ({ 
                 ...q, 
                 grade, 
@@ -180,8 +191,7 @@ const AIGenerator: React.FC<{
             if (!formData) return;
             const { grade, kazanımObject, ogrenmeAlaniName } = formData;
 
-            // FIX: Removed redundant API key check; this is handled by the geminiService.
-            const extractedQuestionsData = await extractQuestionFromImage({ mimeType: imageData.mimeType, data: imageData.data });
+            const extractedQuestionsData = await extractQuestionFromImage({ mimeType: imageData.mimeType, data: imageData.data }, selectedSubjectId);
             
             if (!extractedQuestionsData || extractedQuestionsData.length === 0) {
                  throw new Error('Görselden herhangi bir soru çıkarılamadı. Lütfen görselin net olduğundan ve soruların standart formatta olduğundan emin olun.');
@@ -260,7 +270,7 @@ const AIGenerator: React.FC<{
                         <option value="10">10 Soru</option>
                     </select>
                 </div>
-
+                
                 <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700">
                     <label className="block text-slate-300 mb-2 font-semibold">Görsel Ekle</label>
                     {imageData ? (
@@ -706,9 +716,11 @@ interface TeacherPanelProps {
   setQuestions: React.Dispatch<React.SetStateAction<Question[]>>;
   onSelectQuestion: (question: Question) => void;
   onResetSolvedQuestions: () => void;
+  onClearAllData: () => void;
+  selectedSubjectId: string;
 }
 
-export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuestions, onSelectQuestion, onResetSolvedQuestions }) => {
+export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuestions, onSelectQuestion, onResetSolvedQuestions, onClearAllData, selectedSubjectId }) => {
   const [activeTab, setActiveTab] = useState<'manage' | 'add-single' | 'add-ai' | 'bulk'>('manage');
   const [searchTerm, setSearchTerm] = useState('');
   const [modal, setModal] = useState<{isOpen: boolean; onConfirm: () => void}>({isOpen: false, onConfirm: () => {}});
@@ -718,6 +730,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
   const [generatedCode, setGeneratedCode] = useState('');
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
 
   // State for example JSON generator
   const [exampleGrade, setExampleGrade] = useState<number>(5);
@@ -725,7 +738,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
   const [exampleKazanımId, setExampleKazanımId] = useState<string>('');
   const [exampleType, setExampleType] = useState<QuestionType>('quiz');
   
-  const exampleOgrenmeAlanlari = useMemo(() => curriculumData[exampleGrade] || [], [exampleGrade]);
+  const exampleOgrenmeAlanlari = useMemo(() => curriculumData[selectedSubjectId]?.[exampleGrade] || [], [exampleGrade, selectedSubjectId]);
   const exampleKazanımlar = useMemo(() => {
     if (!exampleOgrenmeAlani) return [];
     const ogrenmeAlani = exampleOgrenmeAlanlari.find(oa => oa.name === exampleOgrenmeAlani);
@@ -736,12 +749,30 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
   useEffect(() => {
     const firstOgrenmeAlani = exampleOgrenmeAlanlari[0]?.name || '';
     setExampleOgrenmeAlani(firstOgrenmeAlani);
-  }, [exampleGrade, exampleOgrenmeAlanlari]);
+  }, [exampleGrade, exampleOgrenmeAlanlari, selectedSubjectId]);
 
   useEffect(() => {
     const firstKazanımId = exampleKazanımlar[0]?.id || '';
     setExampleKazanımId(firstKazanımId);
   }, [exampleOgrenmeAlani, exampleKazanımlar]);
+
+  const subjectPrefixes: Record<string, string[]> = {
+    'social-studies': ['SB.', 'İTA.'],
+    'math': ['MAT.', 'M.'],
+    'science': ['FEN.', 'F.'],
+    'turkish': ['T.'],
+    'english': ['E5.', 'E6.', 'E7.', 'E8.'],
+  };
+
+  const subjectSpecificQuestions = useMemo(() => {
+    const prefixes = subjectPrefixes[selectedSubjectId] || [];
+    if (prefixes.length === 0) {
+      return questions.filter(q => !q.kazanımId); // Show questions without kazanımId if subject prefix is unknown
+    }
+    return questions.filter(q => 
+        q.kazanımId && prefixes.some(prefix => q.kazanımId!.startsWith(prefix))
+    );
+  }, [questions, selectedSubjectId]);
 
 
   const getExampleJson = (grade: number, topic: string, kazanımId: string, type: QuestionType): string => {
@@ -772,36 +803,39 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
 
   const questionSummary = useMemo(() => {
     const summary = {
-        total: questions.length,
-        distinctTopics: new Set(questions.map(q => q.topic)).size,
+        total: subjectSpecificQuestions.length,
+        distinctTopics: new Set(subjectSpecificQuestions.map(q => q.topic)).size,
         byGrade: { 5: 0, 6: 0, 7: 0, 8: 0 } as Record<number, number>,
     };
 
-    for (const q of questions) {
+    for (const q of subjectSpecificQuestions) {
         if (q.grade in summary.byGrade) {
             summary.byGrade[q.grade]++;
         }
     }
     return summary;
-  }, [questions]);
+  }, [subjectSpecificQuestions]);
   
   const kazanımIdToTextMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const gradeKey in curriculumData) {
-        const grade = parseInt(gradeKey);
-        for (const ogrenmeAlani of curriculumData[grade]) {
-            for (const altKonu of ogrenmeAlani.altKonular) {
-                for (const kazanım of altKonu.kazanımlar) {
-                    map.set(kazanım.id, kazanım.text);
-                }
-            }
-        }
+    for (const subjectId in curriculumData) {
+      const subjectGrades = curriculumData[subjectId];
+      for (const gradeKey in subjectGrades) {
+          const gradeData = subjectGrades[parseInt(gradeKey)];
+          for (const ogrenmeAlani of gradeData) {
+              for (const altKonu of ogrenmeAlani.altKonular) {
+                  for (const kazanım of altKonu.kazanımlar) {
+                      map.set(kazanım.id, kazanım.text);
+                  }
+              }
+          }
+      }
     }
     return map;
   }, []);
 
   const groupedAndFilteredQuestions: Record<string, Record<string, Record<string, Question[]>>> = useMemo(() => {
-    const filtered = questions.filter(q => 
+    const filtered = subjectSpecificQuestions.filter(q => 
         q.topic.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (q.type === 'quiz' && q.question.toLowerCase().includes(searchTerm.toLowerCase()))
     );
@@ -829,7 +863,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
     }
 
     return grouped;
-  }, [questions, searchTerm]);
+  }, [subjectSpecificQuestions, searchTerm]);
 
   const addQuestion = (newQuestion: Question) => {
     setQuestions(prev => [...prev, newQuestion]);
@@ -904,31 +938,31 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
   };
   
   const handleExportQuestions = () => {
-      if (questions.length === 0) {
+      if (subjectSpecificQuestions.length === 0) {
           setBulkMessage({ type: 'error', text: 'Dışa aktarılacak soru bulunmuyor.' });
           return;
       }
 
-      const jsonString = JSON.stringify(questions, null, 2);
+      const jsonString = JSON.stringify(subjectSpecificQuestions, null, 2);
       const blob = new Blob([jsonString], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'sosyal-bilgiler-sorular.json';
+      a.download = `soru-bankasi-${selectedSubjectId}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setBulkMessage({ type: 'success', text: 'Tüm sorular başarıyla dışa aktarıldı!' });
+      setBulkMessage({ type: 'success', text: 'Bu derse ait tüm sorular başarıyla dışa aktarıldı!' });
   };
   
   const handleGenerateCode = () => {
-    if (questions.length === 0) {
+    if (subjectSpecificQuestions.length === 0) {
         setBulkMessage({ type: 'error', text: 'Koda dönüştürülecek soru bulunmuyor.' });
         return;
     }
-    const codeString = JSON.stringify(questions, null, 2);
+    const codeString = JSON.stringify(subjectSpecificQuestions, null, 2);
     const arrayContent = codeString.substring(codeString.indexOf('[') + 1, codeString.lastIndexOf(']'));
     setGeneratedCode(arrayContent);
     setShowCodeModal(true);
@@ -1017,7 +1051,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
                                 </details>
                             ))
                         ) : (
-                            <p className="text-center text-slate-400 p-8">Arama kriterlerinize uygun soru bulunamadı.</p>
+                            <p className="text-center text-slate-400 p-8">Bu derse ait veya arama kriterlerinize uygun soru bulunamadı.</p>
                         )}
                     </div>
                 </div>
@@ -1027,13 +1061,13 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
                 </div>
 
                 <div style={{ display: activeTab === 'add-ai' ? 'block' : 'none' }} className="absolute inset-0 overflow-y-auto p-3 sm:p-6">
-                    <AIGenerator onQuestionGenerated={handleAIQuestion} />
+                    <AIGenerator onQuestionGenerated={handleAIQuestion} selectedSubjectId={selectedSubjectId} />
                 </div>
                 
                 <div style={{ display: activeTab === 'bulk' ? 'block' : 'none' }} className="absolute inset-0 overflow-y-auto p-3 sm:p-6">
                     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-full">
                         <div className="lg:col-span-3 flex flex-col h-full">
-                            <h3 className="text-xl font-bold text-cyan-300 mb-2">📂 Toplu Soru İşlemleri</h3>
+                            <h3 className="text-xl font-bold text-cyan-300 mb-2">📂 Toplu İşlemler</h3>
                             <p className="text-slate-400 mb-4">Soruları JSON formatında içe aktarın veya mevcut soru bankanızı dışa aktarın.</p>
                             
                             <textarea
@@ -1058,6 +1092,9 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
                                       🔄 Çözülen Soruları Sıfırla
                                     </Button>
                                 </div>
+                                <Button onClick={() => setShowClearAllConfirm(true)} variant="secondary" className="w-full mt-4">
+                                    🗑️ Tüm Verileri Temizle
+                                </Button>
                             </div>
                             {bulkMessage.text && (
                                 <p className={`mt-4 text-center p-2 rounded-md whitespace-pre-wrap ${bulkMessage.type === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
@@ -1123,6 +1160,17 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
                 setBulkMessage({ type: 'success', text: 'Çözülen sorular başarıyla sıfırlandı! Artık tüm sorular yeniden oynanabilir.' });
             }}
             onCancel={() => setShowResetConfirm(false)}
+        />
+        <Modal
+            isOpen={showClearAllConfirm}
+            title="Tüm Verileri Temizle"
+            message="Bu işlem, soru bankasını, yüksek skorları ve çözülmüş soru geçmişini kalıcı olarak silecektir. Bu işlem geri alınamaz. Emin misiniz?"
+            onConfirm={() => {
+                onClearAllData();
+                setShowClearAllConfirm(false);
+                setBulkMessage({ type: 'success', text: 'Tüm uygulama verileri başarıyla sıfırlandı!' });
+            }}
+            onCancel={() => setShowClearAllConfirm(false)}
         />
     </div>
   );

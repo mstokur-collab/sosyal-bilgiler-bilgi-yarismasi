@@ -4,8 +4,9 @@ import { Button, Modal } from './UI';
 
 // --- Helper Functions & Constants ---
 
-const QUESTION_TIME_DEFAULT = 30;
-const QUESTION_TIME_MATCHING = 45;
+const QUESTION_TIME_QUIZ = 40;
+const QUESTION_TIME_FILL_IN = 35;
+const QUESTION_TIME_MATCHING = 40;
 const MASTER_TIME_DEFAULT = 120; // 2 minutes for timed challenge
 
 // FIX: Added missing 'AnswerState' interface definition.
@@ -18,28 +19,48 @@ interface AnswerState {
 // --- Dynamic Font Sizing Hook ---
 const useFitText = (text: string) => {
     const textRef = useRef<HTMLDivElement>(null);
-    useLayoutEffect(() => {
+
+    const fitTextCallback = useCallback(() => {
         const el = textRef.current;
-        if (!el) return;
-
+        if (!el || !el.parentElement) return;
         const container = el.parentElement;
-        if (!container) return;
 
-        const isMobile = window.innerWidth <= 680;
-        const maxFontSize = isMobile ? 20 : 22;
-        const minFontSize = 10;
+        // To avoid a flash of oversized text, we work on a hidden element
+        el.style.visibility = 'hidden';
+
+        // Set a reasonable upper bound for smart boards and a minimum for readability
+        const maxFontSize = 100;
+        const minFontSize = 14;
         let currentSize = maxFontSize;
 
-        // Reset font size before measuring
         el.style.fontSize = `${currentSize}px`;
 
-        // Decrease font size until it fits
-        while (el.scrollHeight > container.clientHeight && currentSize > minFontSize) {
-            currentSize -= 0.5;
+        // Check for both vertical and horizontal overflow
+        const isOverflowing = () => el.scrollHeight > container.clientHeight || el.scrollWidth > container.clientWidth;
+
+        // Iteratively decrease font size until it fits within the container
+        while (isOverflowing() && currentSize > minFontSize) {
+            currentSize -= 1;
             el.style.fontSize = `${currentSize}px`;
         }
+        
+        // Make the correctly sized text visible again
+        el.style.visibility = 'visible';
+    }, []); // This callback has no dependencies as it only operates on DOM refs
 
-    }, [text]); // Rerun when text changes
+    useLayoutEffect(() => {
+        // Run the fitting logic when the component mounts/text changes
+        fitTextCallback();
+
+        // Also run it on window resize to handle responsive changes
+        window.addEventListener('resize', fitTextCallback);
+        
+        // Cleanup function to remove the event listener
+        return () => {
+            window.removeEventListener('resize', fitTextCallback);
+        };
+    }, [text, fitTextCallback]); // Rerun the effect if the text content changes
+
     return textRef;
 };
 
@@ -228,7 +249,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const [groupScores, setGroupScores] = useState({ grup1: 0, grup2: 0 });
     const [streak, setStreak] = useState(0);
     const [masterTimeLeft, setMasterTimeLeft] = useState(MASTER_TIME_DEFAULT);
-    const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_DEFAULT);
+    const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_QUIZ);
 
     // Common state
     const [answers, setAnswers] = useState<Record<number, AnswerState>>({});
@@ -405,7 +426,21 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     // Question Change Effect
     useEffect(() => {
         if (quizMode === 'klasik' || quizMode === 'hayatta-kalma') {
-            let time = currentQuestion?.type === 'matching' ? QUESTION_TIME_MATCHING : QUESTION_TIME_DEFAULT;
+            let time;
+            switch(currentQuestion?.type) {
+                case 'quiz':
+                    time = QUESTION_TIME_QUIZ;
+                    break;
+                case 'fill-in':
+                    time = QUESTION_TIME_FILL_IN;
+                    break;
+                case 'matching':
+                    time = QUESTION_TIME_MATCHING;
+                    break;
+                default:
+                    time = QUESTION_TIME_QUIZ; // Default to quiz time
+            }
+            
             if (quizMode === 'hayatta-kalma') {
                 time = Math.max(10, time - streak); // Gets harder as you go
             }
@@ -488,6 +523,15 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                                 </button>
                             ))}
                         </div>
+                        {isAnswered && quizQuestion.explanation && (
+                            <div className="mt-4 p-4 bg-green-500/10 border border-green-500/30 rounded-lg animate-fadeIn">
+                                <h4 className="flex items-center gap-2 font-bold text-lg text-green-200 mb-2">
+                                    <span>💡</span>
+                                    <span>Doğru Cevabın Açıklaması</span>
+                                </h4>
+                                <p className="text-slate-200">{quizQuestion.explanation}</p>
+                            </div>
+                        )}
                     </>
                 );
             }
@@ -522,7 +566,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                                         className={`inline-block font-bold mx-2 px-3 py-1 rounded-lg transition-colors duration-500 ${isAnswered ? (currentAnswerState.isCorrect ? 'bg-green-900/50 text-green-200' : 'bg-red-900/50 text-red-300') : 'bg-slate-700/80 text-slate-300'}`}
                                         style={{ minWidth: '150px' }}
                                     >
-                                        {isAnswered ? currentAnswerState.selected : '...'}
+                                        {isAnswered
+                                            ? (typeof currentAnswerState.selected === 'string'
+                                                ? currentAnswerState.selected
+                                                : 'Süre Doldu')
+                                            : '...'}
                                     </span>
                                     <span>{fillInQuestion.sentence.split('___')[1]}</span>
                                 </div>

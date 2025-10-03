@@ -1,4 +1,5 @@
 export type ScreenId = 
+  | 'subject-select'
   | 'start' 
   | 'player-name' 
   | 'grade-select' 
@@ -32,6 +33,7 @@ export interface QuizQuestion extends BaseQuestion {
   question: string;
   options: string[];
   answer: string;
+  explanation?: string;
 }
 
 export interface FillInQuestion extends BaseQuestion {

@@ -1,19 +1,29 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, Question, QuestionType, QuizQuestion } from '../types';
+import { subjectApiKeys, defaultApiKey } from '../apiKeys';
 
 /**
- * Initializes and returns the GoogleGenAI client.
- * The API key is sourced exclusively and securely from the `process.env.API_KEY` environment variable.
+ * Initializes and returns the GoogleGenAI client based on the selected subject.
+ * It first looks for a subject-specific API key in `apiKeys.ts`. If not found,
+ * it falls back to the `defaultApiKey`. This allows for per-subject quota management.
+ * @param subjectId The ID of the subject to find a specific API key for.
  * @returns An initialized GoogleGenAI client.
- * @throws An error if the API key is not configured in the environment.
+ * @throws An error if no API key is configured in `apiKeys.ts`.
  */
-const getAiClient = (): GoogleGenAI => {
-  const apiKey = process.env.API_KEY;
+const getAiClient = (subjectId: string): GoogleGenAI => {
+  // Look for a specific key for the subject.
+  let apiKey = subjectApiKeys[subjectId];
 
+  // If no specific key is found or it's empty, use the default key.
   if (!apiKey) {
-    // This user-friendly error will be caught and displayed to the user.
-    throw new Error(`Gemini API anahtarı bulunamadı. Lütfen uygulamanın ortam değişkenlerinde (environment variables) API_KEY'in ayarlandığından emin olun.`);
+    apiKey = defaultApiKey;
   }
+
+  // If still no key is found, throw a user-friendly error.
+  if (!apiKey) {
+    throw new Error("Gemini API anahtarı bulunamadı. Lütfen 'apiKeys.ts' dosyasını açıp ilgili ders için veya 'defaultApiKey' olarak API anahtarınızı eklediğinizden emin olun.");
+  }
+  
   return new GoogleGenAI({ apiKey });
 };
 
@@ -83,7 +93,7 @@ export const generateQuestionWithAI = async (
   subjectId: string,
   imageData?: { mimeType: string; data: string }
 ): Promise<Omit<Question, 'id' | 'grade' | 'topic' | 'difficulty' | 'type'>[]> => {
-  const aiClient = getAiClient();
+  const aiClient = getAiClient(subjectId);
   
   const getEnglishPrompt = () => `
     You are an expert curriculum designer and English language teacher for young learners (grades 5-8, CEFR A1-A2 level).
@@ -135,11 +145,6 @@ export const generateQuestionWithAI = async (
       prompt = getTurkishPrompt(!!imageData);
   }
   
-  // FIX: Standardize the `contents` structure to always use the `parts` array.
-  // This prevents an SDK inconsistency that causes a misleading "Unsupported MIME type" error
-  // when mixing string and object types for the `contents` parameter.
-  // FIX: Explicitly type the `parts` array to allow both text and inlineData objects,
-  // resolving a TypeScript error where `inlineData` was not a known property.
   const parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [{ text: prompt }];
   if (imageData) {
     parts.unshift({ inlineData: { mimeType: imageData.mimeType, data: imageData.data } });
@@ -188,7 +193,7 @@ export const extractQuestionFromImage = async (
     imageData: { mimeType: string; data: string },
     subjectId: string
 ): Promise<(Omit<QuizQuestion, 'id' | 'grade' | 'topic' | 'type' | 'kazanımId' | 'imageUrl'> & { visualContext?: { x: number; y: number; width: number; height: number; } })[]> => {
-    const aiClient = getAiClient();
+    const aiClient = getAiClient(subjectId);
 
     const promptText = `
         Sen eğitim materyalleri için uzman bir OCR (Optik Karakter Tanıma) ve analiz aracısın.

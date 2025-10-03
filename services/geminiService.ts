@@ -1,28 +1,20 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, Question, QuestionType, QuizQuestion } from '../types';
 
-// Use a variable to hold the initialized client.
-// This allows for "lazy initialization" - we only create the client when it's first needed.
-let ai: GoogleGenAI | null = null;
-
 /**
  * Initializes and returns the GoogleGenAI client.
- * Throws an error if the API key is not available.
- * This function ensures the main app can run even if AI features are not configured.
+ * The API key is sourced exclusively and securely from the `process.env.API_KEY` environment variable.
+ * @returns An initialized GoogleGenAI client.
+ * @throws An error if the API key is not configured in the environment.
  */
 const getAiClient = (): GoogleGenAI => {
-  if (!ai) {
-    // ÖNEMLİ: Kendi Gemini API anahtarınızı aşağıdaki tırnak işaretleri arasına yapıştırın.
-    const apiKey = "AIzaSyCSl_xSycRRGOAnPjHGPNHvPmauKW35iWI";
+  const apiKey = process.env.API_KEY;
 
-    if (!apiKey || apiKey === "LÜTFEN_API_ANAHTARINIZI_BURAYA_YAPIŞTIRIN") {
-      // This user-friendly error will be caught by the TeacherPanel component
-      // and displayed to the user without crashing the entire application.
-      throw new Error("Gemini API anahtarı bulunamadı. Lütfen `services/geminiService.ts` dosyasını düzenleyip kendi anahtarınızı girin.");
-    }
-    ai = new GoogleGenAI({ apiKey });
+  if (!apiKey) {
+    // This user-friendly error will be caught and displayed to the user.
+    throw new Error(`Gemini API anahtarı bulunamadı. Lütfen uygulamanın ortam değişkenlerinde (environment variables) API_KEY'in ayarlandığından emin olun.`);
   }
-  return ai;
+  return new GoogleGenAI({ apiKey });
 };
 
 
@@ -35,9 +27,10 @@ const getQuizSchema = () => ({
       items: { type: Type.STRING },
       description: "Dört seçenek. Doğru cevap da bu listede olmalı."
     },
-    answer: { type: Type.STRING, description: "Doğru cevap. Seçeneklerden biriyle tam olarak eşleşmelidir." }
+    answer: { type: Type.STRING, description: "Doğru cevap. Seçeneklerden biriyle tam olarak eşleşmelidir." },
+    explanation: { type: Type.STRING, description: "Doğru cevabın neden doğru olduğunu kısaca ve anlaşılır bir şekilde açıklayan metin." }
   },
-  required: ["question", "options", "answer"]
+  required: ["question", "options", "answer", "explanation"]
 });
 
 const getFillInSchema = () => ({
@@ -87,48 +80,71 @@ export const generateQuestionWithAI = async (
   difficulty: Difficulty,
   type: QuestionType,
   count: number,
+  subjectId: string,
   imageData?: { mimeType: string; data: string }
 ): Promise<Omit<Question, 'id' | 'grade' | 'topic' | 'difficulty' | 'type'>[]> => {
-  // Get the AI client only when this function is called.
   const aiClient = getAiClient();
   
-  const promptText = `
-    Lütfen aşağıdaki kriterlere ve sağlanan görsele uygun ${count} adet sosyal bilgiler bilgi yarışması sorusu oluştur:
+  const getEnglishPrompt = () => `
+    You are an expert curriculum designer and English language teacher for young learners (grades 5-8, CEFR A1-A2 level).
+    Your task is to generate ${count} quiz questions in ENGLISH based on the following Turkish curriculum outcome.
+
+    - Grade Level: ${grade}
+    - Learning Outcome ID: ${kazanımId}
+    - Learning Outcome Text (in Turkish): "${kazanımText}"
+    - Difficulty: ${difficulty}
+    - Question Type: ${type}
+    
+    CRITICAL INSTRUCTIONS:
+    1.  LANGUAGE: The entire output, including questions, options, and answers, MUST be in ENGLISH.
+    2.  CURRICULUM ANALYSIS: The Learning Outcome ID "${kazanımId}" is structured as E<Grade>.<Unit>.<Skill><Number>. The skill is crucial.
+        - If the skill is 'L' (Listening) or 'R' (Reading), you MUST first generate a short, simple English text, dialogue, or scenario (max 50 words) relevant to the outcome. Then, create the quiz question(s) based on that text. For example, a reading passage followed by a multiple-choice question about it.
+        - If the skill is 'S' (Speaking) or 'W' (Writing), generate a prompt-style question that encourages a response. For example, "Which sentence is the correct way to ask for permission?" or a fill-in-the-blank question testing grammar/vocabulary.
+    3.  VISUAL CONTEXT (if provided): If an image is uploaded, the question MUST be directly related to the image. Use phrases like "Look at the picture. What is the boy doing?" or "Based on the image, where is the cat?".
+    4.  AGE APPROPRIATENESS: Keep the language simple, clear, and engaging for young learners (ages 10-14). Avoid complex grammar and vocabulary unless it is the direct subject of the learning outcome.
+    5.  VARY OPTION LENGTH: To prevent students from guessing based on length, the word count of the correct answer and the distractors must be varied. The correct answer should not consistently be the longest or shortest option. Make all options plausible and of similar complexity.
+    6.  EXPLANATION: For each question, generate a brief and clear 'explanation' text explaining why the correct answer is correct. This should help the learner understand the concept better.
+    7.  RESPONSE FORMAT: The final output MUST be ONLY a valid JSON array of question objects matching the requested schema. Do not add any extra text, explanations, or introductory sentences.
+  `;
+
+  const getTurkishPrompt = (isImage: boolean) => {
+    const imagePromptPart = `
+    - Önemli: Soru, doğrudan yüklenen görselle ilgili olmalı, görseldeki bir unsuru sormalı veya görseli bir kanıt/ipucu olarak kullandırmalıdır.`;
+    
+    return `
+    Lütfen aşağıdaki kriterlere${isImage ? ' ve sağlanan görsele' : ''} uygun ${count} adet bilgi yarışması sorusu oluştur:
     - Sınıf Seviyesi: ${grade}. sınıf
     - Kazanım ID: ${kazanımId}
     - Kazanım Metni: ${kazanımText}
     - Zorluk: ${difficulty}
     - Soru Tipi: ${type}
-    - Önemli: Soru, doğrudan yüklenen görselle ilgili olmalı, görseldeki bir unsuru sormalı veya görseli bir kanıt/ipucu olarak kullandırmalıdır.
-    Soru, belirtilen kazanım ID'si ve metnine tam olarak uygun olmalı ve bu kazanımı ölçmelidir.
-    Yanıtın her zaman bir JSON dizisi (array) formatında olmalıdır.
-    Sadece ve sadece istenen JSON formatında bir yanıt ver. Açıklama veya giriş metni ekleme.
+    ${isImage ? imagePromptPart : ''}
+    
+    KRİTİK TALİMATLAR:
+    1.  UYGUNLUK: Soru, belirtilen kazanım ID'si ve metnine tam olarak uygun olmalı ve bu kazanımı ölçmelidir.
+    2.  ŞIK UZUNLUĞU: Öğrencilerin sadece metin uzunluğuna bakarak doğru cevabı tahmin etmesini engellemek için, doğru cevabın ve çeldirici seçeneklerin kelime sayılarını/uzunluklarını değişken tut. Doğru cevap bazen en kısa, bazen en uzun, bazen de ortalama uzunlukta olmalıdır. Tüm seçenekler inandırıcı ve benzer karmaşıklıkta olmalıdır.
+    3.  AÇIKLAMA: Her çoktan seçmeli soru için, doğru cevabın neden doğru olduğunu açıklayan, kısa ve anlaşılır bir 'explanation' metni oluştur. Bu açıklama, öğrencinin konuyu daha iyi anlamasına yardımcı olmalıdır.
+    4.  JSON FORMATI: Yanıtın her zaman bir JSON dizisi (array) formatında olmalıdır. Sadece ve sadece istenen JSON formatında bir yanıt ver. Açıklama veya giriş metni ekleme.
   `;
-  
-  const plainTextPrompt = `
-    Lütfen aşağıdaki kriterlere uygun ${count} adet sosyal bilgiler bilgi yarışması sorusu oluştur:
-    - Sınıf Seviyesi: ${grade}. sınıf
-    - Kazanım ID: ${kazanımId}
-    - Kazanım Metni: ${kazanımText}
-    - Zorluk: ${difficulty}
-    - Soru Tipi: ${type}
+  };
 
-    Soru, belirtilen kazanım ID'si ve metnine tam olarak uygun olmalı ve bu kazanımı ölçmelidir.
-    Yanıtın her zaman bir JSON dizisi (array) formatında olmalıdır.
-    Sadece ve sadece istenen JSON formatında bir yanıt ver. Açıklama veya giriş metni ekleme.
-  `;
-
-  let contents: any;
-  if (imageData) {
-    contents = {
-        parts: [
-            { inlineData: { mimeType: imageData.mimeType, data: imageData.data } },
-            { text: promptText }
-        ]
-    };
+  let prompt;
+  if (subjectId === 'english') {
+      prompt = getEnglishPrompt();
   } else {
-    contents = plainTextPrompt;
+      prompt = getTurkishPrompt(!!imageData);
   }
+  
+  // FIX: Standardize the `contents` structure to always use the `parts` array.
+  // This prevents an SDK inconsistency that causes a misleading "Unsupported MIME type" error
+  // when mixing string and object types for the `contents` parameter.
+  // FIX: Explicitly type the `parts` array to allow both text and inlineData objects,
+  // resolving a TypeScript error where `inlineData` was not a known property.
+  const parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [{ text: prompt }];
+  if (imageData) {
+    parts.unshift({ inlineData: { mimeType: imageData.mimeType, data: imageData.data } });
+  }
+  const contents = { parts };
 
 
   const schemaGenerator = typeToSchemaMap[type];
@@ -169,9 +185,9 @@ export const generateQuestionWithAI = async (
 };
 
 export const extractQuestionFromImage = async (
-    imageData: { mimeType: string; data: string }
+    imageData: { mimeType: string; data: string },
+    subjectId: string
 ): Promise<(Omit<QuizQuestion, 'id' | 'grade' | 'topic' | 'type' | 'kazanımId' | 'imageUrl'> & { visualContext?: { x: number; y: number; width: number; height: number; } })[]> => {
-    // Get the AI client only when this function is called.
     const aiClient = getAiClient();
 
     const promptText = `
@@ -189,7 +205,7 @@ export const extractQuestionFromImage = async (
             - Bir sorunun metni, cevaplanması için görseldeki belirli bir parçaya atıfta bulunuyorsa (örneğin "Yukarıdaki tabloya göre...", "Verilen zaman çizelgesine göre...", "Haritadaki bilgilere dayanarak..."), bu parçayı \`visualContext\` olarak belirlemelisin.
             - \`visualContext\` olarak belirlediğin alan, **SADECE** referans verilen görsel öğeyi (tablo, grafik, resim, harita vb.) içermelidir.
             - Bu alan **KESİNLİKLE** sorunun metnini, seçeneklerini veya cevap işaretlerini içermemelidir.
-            - Amacın, metin olarak ifade edilemeyen ve soruyu anlamak için gerekli olan görsel bilgiyi ayıklamaktır. Örneğin, bir zaman çizelgesindeki tarihleri ve olayları metne dökemezsin, bu yüzden o çizelgenin kendisi \`visualContext\` olur.
+            - Amacın, metin olarak ifade edilemeyen ve soruyu anlamak için gerekli olan görsel bilgiyi ayıklamaktır. Örneğin, bir zaman çizelgesindeki tarihleri ve olayları metne dökemezsin, bu yüzden o çizelgesinin kendisi \`visualContext\` olur.
             - Eğer bir soru herhangi bir görsel öğeye ihtiyaç duymuyorsa, \`visualContext\` alanını boş bırak.
         8.  **SINIRLAYICI KUTU KOORDİNATLARI:**
             - \`visualContext\` olarak belirlediğin alanın sınırlayıcı kutusunu (bounding box) hassas bir şekilde hesapla.
@@ -198,6 +214,7 @@ export const extractQuestionFromImage = async (
         Sonucu, talep edilen JSON şemasına harfiyen uyacak şekilde bir JSON DİZİSİ (array) olarak döndür. Her soru dizinin bir elemanı olmalıdır. Başka hiçbir açıklama veya metin ekleme.
     `;
 
+    // FIX: Standardize the `contents` structure to always use the `parts` array.
     const contents = {
         parts: [
             { inlineData: { mimeType: imageData.mimeType, data: imageData.data } },
@@ -225,7 +242,7 @@ export const extractQuestionFromImage = async (
                 },
             }
         },
-        required: [...baseQuizSchema.required, 'difficulty']
+        required: [...baseQuizSchema.required.filter(item => item !== 'explanation'), 'difficulty']
     };
 
     const responseSchema = {

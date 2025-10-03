@@ -104,7 +104,8 @@ const AIGenerator: React.FC<{
             reader.onloadend = () => {
                 const base64String = reader.result as string;
                 setImageData({
-                    mimeType: file.type,
+                    // FIX: Provide a fallback MIME type to prevent errors with files that lack type information.
+                    mimeType: file.type || 'image/jpeg',
                     data: base64String.split(',')[1], // Remove the "data:mime/type;base64," part
                     previewUrl: base64String
                 });

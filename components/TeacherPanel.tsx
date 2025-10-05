@@ -1,14 +1,13 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Question, QuestionType, Difficulty, QuizQuestion, FillInQuestion, MatchingQuestion, MatchingPair } from '../types';
 import { Button, Modal } from './UI';
-import { generateQuestionWithAI, extractQuestionFromImage } from '../services/geminiService';
+import { generateQuestionWithAI, extractQuestionFromImage, generateImageForQuestion } from '../services/geminiService';
 import { curriculumData } from '../data/curriculum';
 
 // --- Helper Components ---
 
 const TabButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode; }> = ({ active, onClick, children }) => (
-    <button onClick={onClick} className={`flex-1 p-3 sm:p-4 font-semibold text-sm sm:text-lg transition-colors duration-300 border-b-4 text-center ${active ? 'border-indigo-400 text-white' : 'border-transparent text-slate-400 hover:text-white'}`}>
+    <button onClick={onClick} className={`flex-1 p-3 sm:p-4 font-semibold text-sm sm:text-base transition-colors duration-300 border-b-4 text-center ${active ? 'border-indigo-400 text-white' : 'border-transparent text-slate-400 hover:text-white'}`}>
         {children}
     </button>
 );
@@ -73,6 +72,7 @@ const AIGenerator: React.FC<{
   selectedSubjectId: string;
 }> = ({ onQuestionGenerated, selectedSubjectId }) => {
     const [isLoading, setIsLoading] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState('Üretiliyor...');
     const [isExtracting, setIsExtracting] = useState(false);
     const [error, setError] = useState('');
     
@@ -80,17 +80,26 @@ const AIGenerator: React.FC<{
     const [selectedOgrenmeAlani, setSelectedOgrenmeAlani] = useState('');
     const [questionCount, setQuestionCount] = useState(1);
     const [imageData, setImageData] = useState<{ mimeType: string, data: string, previewUrl: string } | null>(null);
+    const [shouldGenerateImage, setShouldGenerateImage] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const formRef = useRef<HTMLFormElement>(null);
 
+    const [validationModal, setValidationModal] = useState({
+      isOpen: false,
+      message: '',
+      onConfirm: () => {},
+      onCancel: () => {},
+    });
+
+    const isParagraphMode = selectedSubjectId === 'paragraph';
 
     const ogrenmeAlanlari = useMemo(() => curriculumData[selectedSubjectId]?.[selectedGrade] || [], [selectedGrade, selectedSubjectId]);
     
     const kazanımlar = useMemo(() => {
         if (!selectedOgrenmeAlani) return [];
         const ogrenmeAlani = ogrenmeAlanlari.find(oa => oa.name === selectedOgrenmeAlani);
-        // Each OgrenmeAlani has one AltKonu with the same name which holds the kazanımlar
-        return ogrenmeAlani?.altKonular[0]?.kazanımlar || [];
+        // FIX: Flatten kazanımlar from all altKonular
+        return ogrenmeAlani?.altKonular.flatMap(ak => ak.kazanımlar) || [];
     }, [selectedOgrenmeAlani, ogrenmeAlanlari]);
 
     useEffect(() => {
@@ -124,19 +133,39 @@ const AIGenerator: React.FC<{
         const formData = new FormData(formRef.current);
         const grade = parseInt(formData.get('ai-grade') as string);
         const difficulty = formData.get('ai-difficulty') as Difficulty;
-        const type = formData.get('ai-type') as QuestionType;
         const count = parseInt(formData.get('ai-count') as string, 10);
+        const skill = formData.get('ai-skill') as string || 'auto';
+
+        if (isParagraphMode) {
+             if (!grade || !difficulty) {
+                throw new Error("Lütfen tüm alanları (Sınıf, Zorluk vb.) eksiksiz doldurun.");
+            }
+            return {
+                grade,
+                difficulty,
+                type: 'quiz' as QuestionType,
+                count,
+                kazanımObject: { id: `P.${grade}.1`, text: 'Paragraf okuduğunu anlama' },
+                ogrenmeAlaniName: 'Paragraf Okuduğunu Anlama',
+                skill
+            };
+        }
+
+        const type = formData.get('ai-type') as QuestionType;
         const kazanımId = formData.get('ai-kazanım') as string;
         const ogrenmeAlaniName = formData.get('ai-ogrenme-alani') as string;
 
         const selectedOgrenmeAlaniData = curriculumData[selectedSubjectId]?.[grade]?.find(oa => oa.name === ogrenmeAlaniName);
-        const kazanımObject = selectedOgrenmeAlaniData?.altKonular[0]?.kazanımlar.find(k => k.id === kazanımId);
+        // FIX: Search for kazanım in all altKonular
+        const kazanımObject = selectedOgrenmeAlaniData?.altKonular
+            .flatMap(ak => ak.kazanımlar)
+            ?.find(k => k.id === kazanımId);
 
         if (!grade || !difficulty || !type || !kazanımObject || !ogrenmeAlaniName) {
             throw new Error("Lütfen tüm alanları (Sınıf, Öğrenme Alanı, Kazanım vb.) eksiksiz doldurun.");
         }
 
-        return { grade, difficulty, type, count, kazanımObject, ogrenmeAlaniName };
+        return { grade, difficulty, type, count, kazanımObject, ogrenmeAlaniName, skill };
     };
 
 
@@ -148,8 +177,9 @@ const AIGenerator: React.FC<{
             const formData = getFormData();
             if (!formData) return;
             
-            const { grade, difficulty, type, count, kazanımObject, ogrenmeAlaniName } = formData;
+            const { grade, difficulty, type, count, kazanımObject, ogrenmeAlaniName, skill } = formData;
             
+            setLoadingMessage('Soru metinleri üretiliyor...');
             const generatedData = await generateQuestionWithAI(
                 grade, 
                 kazanımObject.id, 
@@ -158,25 +188,106 @@ const AIGenerator: React.FC<{
                 type, 
                 count, 
                 selectedSubjectId,
+                skill,
                 imageData ? { mimeType: imageData.mimeType, data: imageData.data } : undefined
             );
 
-            const questionsWithMetadata = generatedData.map(q => ({ 
-                ...q, 
-                grade, 
-                topic: ogrenmeAlaniName, 
-                difficulty, 
-                type, 
-                imageUrl: imageData?.previewUrl || undefined, 
-                kazanımId: kazanımObject.id 
-            }));
-            onQuestionGenerated(questionsWithMetadata);
-            clearImage();
+            const questionsWithImages = await Promise.all(
+                generatedData.map(async (q, index) => {
+                    const visualPrompt = (q as { visualPrompt?: string }).visualPrompt;
+                    let imageUrl: string | null = null;
+            
+                    if (shouldGenerateImage && !imageData && visualPrompt) {
+                        setLoadingMessage(`Bütünleşik Görsel ${index + 1}/${generatedData.length} Üretiliyor...`);
+                        try {
+                            if (index > 0) {
+                                await new Promise(resolve => setTimeout(resolve, 2000));
+                            }
+                            imageUrl = await generateImageForQuestion(visualPrompt);
+                        } catch (err) {
+                            const errorMessage = (err as Error).message;
+                            console.error(`Görsel ${index + 1} üretilemedi:`, err);
+                            setError(`Görsel ${index + 1}/${generatedData.length} üretilirken bir hata oluştu. Hata: ${errorMessage}`);
+                            if (errorMessage.includes('429') || errorMessage.includes('Kota Limiti Aşıldı')) {
+                                throw new Error(errorMessage);
+                            }
+                        }
+                    }
+                    return { ...q, imageUrl: imageUrl || undefined };
+                })
+            );
+
+            // --- Validation Step & Sanitization ---
+            let compliantCount = 0;
+            const validatedData = questionsWithImages.map(q => {
+                // Sanitize quiz options to handle cases where the AI provides more than 4 options.
+                if ((q as QuizQuestion).type === 'quiz' && (q as QuizQuestion).options?.length > 4) {
+                    const quizQ = q as QuizQuestion;
+                    const correctAnswer = quizQ.answer;
+                    
+                    // Get all other options (distractors).
+                    const distractors = quizQ.options.filter(opt => opt !== correctAnswer);
+                    
+                    // Create the new options array with the correct answer and the first 3 distractors.
+                    const newOptions = [correctAnswer, ...distractors.slice(0, 3)];
+
+                    // Shuffle the new 4-option array to avoid the correct answer always being in the same position.
+                    for (let i = newOptions.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [newOptions[i], newOptions[j]] = [newOptions[j], newOptions[i]];
+                    }
+                    
+                    // Update the question object with the sanitized 4-option list.
+                    (q as QuizQuestion).options = newOptions;
+                }
+
+                // Check if the AI returned the correct learning outcome ID.
+                const aiKazanımId = (q as Partial<Question>).kazanımId;
+                if (aiKazanımId && aiKazanımId === kazanımObject.id) {
+                    compliantCount++;
+                    return { ...q, isValidated: true };
+                }
+                return { ...q, isValidated: false };
+            });
+
+            const totalGenerated = validatedData.length;
+            const nonCompliantCount = totalGenerated - compliantCount;
+
+            const processAndAddQuestions = (dataToAdd: typeof validatedData) => {
+                const questionsWithMetadata = dataToAdd.map(q => ({ 
+                    ...q, 
+                    grade, 
+                    topic: ogrenmeAlaniName, 
+                    difficulty, 
+                    type, 
+                    imageUrl: q.imageUrl || imageData?.previewUrl || undefined, 
+                    kazanımId: kazanımObject.id, // Overwrite with the correct one to ensure consistency
+                }));
+                onQuestionGenerated(questionsWithMetadata);
+                clearImage();
+            };
+
+            if (nonCompliantCount > 0) {
+                setValidationModal({
+                    isOpen: true,
+                    message: `Yapay zeka tarafından üretilen ${totalGenerated} sorudan ${nonCompliantCount} tanesi, seçilen kazanım ile tam eşleşmiyor olabilir veya kazanım ID'sini eksik döndürdü. Bu soruları yine de eklemek istiyor musunuz? (Eşleşmeyen soruların kazanım ID'si otomatik olarak düzeltilecektir.)`,
+                    onConfirm: () => {
+                        processAndAddQuestions(validatedData);
+                        setValidationModal({ ...validationModal, isOpen: false });
+                    },
+                    onCancel: () => {
+                        setValidationModal({ ...validationModal, isOpen: false });
+                    }
+                });
+            } else {
+                processAndAddQuestions(validatedData);
+            }
 
         } catch (err: any) {
             setError(err.message || 'Soru üretilirken bir hata oluştu.');
         } finally {
             setIsLoading(false);
+            setLoadingMessage('Üretiliyor...');
         }
     };
     
@@ -192,7 +303,7 @@ const AIGenerator: React.FC<{
             if (!formData) return;
             const { grade, kazanımObject, ogrenmeAlaniName } = formData;
 
-            const extractedQuestionsData = await extractQuestionFromImage({ mimeType: imageData.mimeType, data: imageData.data }, selectedSubjectId);
+            const extractedQuestionsData = await extractQuestionFromImage({ mimeType: imageData.mimeType, data: imageData.data });
             
             if (!extractedQuestionsData || extractedQuestionsData.length === 0) {
                  throw new Error('Görselden herhangi bir soru çıkarılamadı. Lütfen görselin net olduğundan ve soruların standart formatta olduğundan emin olun.');
@@ -236,8 +347,8 @@ const AIGenerator: React.FC<{
 
     return (
         <div className="p-4 bg-slate-900/50 rounded-xl border border-indigo-500/50 mt-2 sm:mt-6">
-            <h3 className="text-xl font-bold text-indigo-300 mb-3">✨ AI ile Kazanım Odaklı Soru Üret</h3>
-            <p className="text-slate-400 mb-4">Yeni soru üretin veya cevabı işaretlenmiş bir soru görselini yükleyerek sisteme otomatik aktarın.</p>
+            <h3 className="text-xl font-bold text-indigo-300 mb-3">✨ AI ile Soru Üret</h3>
+            <p className="text-slate-400 mb-4">{isParagraphMode ? 'Yeni paragraf soruları üretin.' : 'Yeni soru üretin veya cevabı işaretlenmiş bir soru görselini yükleyerek sisteme otomatik aktarın.'}</p>
             <form onSubmit={handleSubmit} ref={formRef} className="space-y-4">
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <select name="ai-grade" required value={selectedGrade} onChange={(e) => setSelectedGrade(parseInt(e.target.value))} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
@@ -246,57 +357,101 @@ const AIGenerator: React.FC<{
                         <option value="7">7. Sınıf</option>
                         <option value="8">8. Sınıf</option>
                     </select>
-                     <select name="ai-ogrenme-alani" required value={selectedOgrenmeAlani} onChange={e => setSelectedOgrenmeAlani(e.target.value)} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
-                        <option value="">Öğrenme Alanı Seçin</option>
-                        {ogrenmeAlanlari.map(oa => <option key={oa.name} value={oa.name}>{oa.name}</option>)}
-                    </select>
-                </div>
-                
-                <select name="ai-kazanım" required disabled={!selectedOgrenmeAlani} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full disabled:opacity-50 disabled:cursor-not-allowed">
-                    <option value="">Kazanım Seçin</option>
-                    {kazanımlar.map(k => <option key={k.id} value={k.id}>{k.id} - {k.text}</option>)}
-                </select>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <select name="ai-difficulty" required defaultValue="orta" className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
                         <option value="kolay">Kolay</option><option value="orta">Orta</option><option value="zor">Zor</option>
                     </select>
-                     <select name="ai-type" required defaultValue="quiz" className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
-                        <option value="quiz">Çoktan Seçmeli</option><option value="fill-in">Boşluk Doldurma</option><option value="matching">Eşleştirme</option>
-                    </select>
-                    <select name="ai-count" value={questionCount} onChange={(e) => setQuestionCount(parseInt(e.target.value, 10))} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
-                        <option value="1">1 Soru</option>
-                        <option value="3">3 Soru</option>
-                        <option value="5">5 Soru</option>
-                        <option value="10">10 Soru</option>
-                    </select>
                 </div>
                 
-                <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700">
-                    <label className="block text-slate-300 mb-2 font-semibold">Görsel Ekle</label>
-                    {imageData ? (
-                        <div className="relative w-full sm:w-1/2 mx-auto">
-                            <img src={imageData.previewUrl} alt="Yüklenen görsel" className="w-full max-h-48 object-contain rounded-lg border border-slate-600 bg-slate-900/50 p-1"/>
-                            <button onClick={clearImage} title="Resmi Kaldır" className="absolute -top-2 -right-2 bg-red-600/80 hover:bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center font-bold text-sm transition-transform hover:scale-110">×</button>
+                {!isParagraphMode && (
+                    <>
+                        <select name="ai-ogrenme-alani" required value={selectedOgrenmeAlani} onChange={e => setSelectedOgrenmeAlani(e.target.value)} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
+                            <option value="">Öğrenme Alanı Seçin</option>
+                            {ogrenmeAlanlari.map(oa => <option key={oa.name} value={oa.name}>{oa.name}</option>)}
+                        </select>
+                    
+                        <select name="ai-kazanım" required disabled={!selectedOgrenmeAlani} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full disabled:opacity-50 disabled:cursor-not-allowed">
+                            <option value="">Kazanım Seçin</option>
+                            {kazanımlar.map(k => <option key={k.id} value={k.id}>{k.id} - {k.text}</option>)}
+                        </select>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <select name="ai-type" required defaultValue="quiz" className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
+                                <option value="quiz">Çoktan Seçmeli</option><option value="fill-in">Boşluk Doldurma</option><option value="matching">Eşleştirme</option>
+                            </select>
+                            <select name="ai-count" value={questionCount} onChange={(e) => setQuestionCount(parseInt(e.target.value, 10))} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
+                                <option value="1">1 Soru</option><option value="3">3 Soru</option><option value="5">5 Soru</option><option value="10">10 Soru</option>
+                            </select>
                         </div>
-                    ) : (
-                         <Button type="button" onClick={() => fileInputRef.current?.click()} className="text-base px-4 py-2 w-full">
-                            🖼️ Bilgisayardan Seç
-                         </Button>
-                    )}
-                    <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/png, image/jpeg, image/webp" className="hidden" />
-                </div>
+                    </>
+                )}
+
+                {isParagraphMode && (
+                    <>
+                        <select name="ai-skill" defaultValue="auto" className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
+                            <option value="auto">Ölçülecek Anlama Becerisi (AI Karar Versin)</option>
+                            <option value="main-idea">Ana Fikir / Konu</option>
+                            <option value="supporting-idea">Yardımcı Fikir</option>
+                            <option value="inference">Metinden Çıkarım Yapma</option>
+                            <option value="vocabulary">Sözcük Anlamı</option>
+                            <option value="author-purpose">Yazarın Amacı / Tutumu</option>
+                        </select>
+                        <select name="ai-count" value={questionCount} onChange={(e) => setQuestionCount(parseInt(e.target.value, 10))} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
+                            <option value="1">1 Soru</option>
+                            <option value="3">3 Soru</option>
+                            <option value="5">5 Soru</option>
+                            <option value="10">10 Soru</option>
+                        </select>
+                    </>
+                )}
+
+                
+                {!isParagraphMode && (
+                    <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700 space-y-3">
+                        <label className="block text-slate-300 font-semibold">Görsel Seçenekleri</label>
+                        {imageData ? (
+                            <div className="relative w-full sm:w-1/2 mx-auto">
+                                <img src={imageData.previewUrl} alt="Yüklenen görsel" className="w-full max-h-48 object-contain rounded-lg border border-slate-600 bg-slate-900/50 p-1"/>
+                                <button onClick={clearImage} title="Resmi Kaldır" className="absolute -top-2 -right-2 bg-red-600/80 hover:bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center font-bold text-sm transition-transform hover:scale-110">×</button>
+                            </div>
+                        ) : (
+                             <Button type="button" onClick={() => fileInputRef.current?.click()} className="text-base px-4 py-2 w-full">
+                                🖼️ Bilgisayardan Seç (Soru Aktarmak İçin)
+                             </Button>
+                        )}
+                        <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/png, image/jpeg, image/webp" className="hidden" />
+                        
+                        <div className="flex items-center justify-center p-2 rounded-md bg-indigo-900/30">
+                            <input
+                                type="checkbox"
+                                id="generate-image-checkbox"
+                                checked={shouldGenerateImage}
+                                onChange={(e) => setShouldGenerateImage(e.target.checked)}
+                                disabled={!!imageData}
+                                className="w-5 h-5 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500"
+                            />
+                            <label htmlFor="generate-image-checkbox" className="ml-2 text-sm font-medium text-slate-200">
+                                Bu soruya görsel de üretilsin (Beta)
+                            </label>
+                        </div>
+                    </div>
+                )}
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                      <Button type="submit" disabled={isLoading || isExtracting} className="w-full text-base py-2.5">
-                        {isLoading ? 'Üretiliyor...' : `🤖 ${questionCount} Soru Üret`}
+                        {isLoading ? loadingMessage : `🤖 ${questionCount} Soru Üret`}
                     </Button>
-                    <Button type="button" onClick={handleExtractQuestion} disabled={isLoading || isExtracting || !imageData} variant="success" className="w-full text-base py-2.5">
+                    <Button type="button" onClick={handleExtractQuestion} disabled={isLoading || isExtracting || !imageData || isParagraphMode} variant="success" className="w-full text-base py-2.5">
                         {isExtracting ? 'Aktarılıyor...' : '📷 Görseldeki Soruları Aktar'}
                     </Button>
                 </div>
                 {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
             </form>
+            <Modal
+                isOpen={validationModal.isOpen}
+                title="Kazanım Uyum Uyarısı"
+                message={validationModal.message}
+                onConfirm={validationModal.onConfirm}
+                onCancel={validationModal.onCancel}
+            />
         </div>
     );
 };
@@ -743,7 +898,8 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
   const exampleKazanımlar = useMemo(() => {
     if (!exampleOgrenmeAlani) return [];
     const ogrenmeAlani = exampleOgrenmeAlanlari.find(oa => oa.name === exampleOgrenmeAlani);
-    return ogrenmeAlani?.altKonular[0]?.kazanımlar || [];
+    // FIX: Flatten kazanımlar from all altKonular
+    return ogrenmeAlani?.altKonular.flatMap(ak => ak.kazanımlar) || [];
   }, [exampleOgrenmeAlani, exampleOgrenmeAlanlari]);
 
   // Reset dependent dropdowns on change
@@ -763,6 +919,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
     'science': ['FEN.', 'F.'],
     'turkish': ['T.'],
     'english': ['E5.', 'E6.', 'E7.', 'E8.'],
+    'paragraph': ['P.'],
   };
 
   const subjectSpecificQuestions = useMemo(() => {
@@ -975,204 +1132,150 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({ questions, setQuesti
     <div className="w-full h-full flex flex-col p-4 sm:p-6 text-white">
         <h2 className="text-4xl font-bold text-center mb-6">👩‍🏫 Öğretmen Paneli</h2>
         <div className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-2xl flex-grow flex flex-col overflow-hidden">
-            <div className="flex border-b border-slate-700 flex-shrink-0">
+            <div className="flex border-b border-slate-700 flex-shrink-0 flex-wrap">
                 <TabButton active={activeTab === 'manage'} onClick={() => setActiveTab('manage')}>📊 Soru Yönetimi</TabButton>
-                <TabButton active={activeTab === 'add-single'} onClick={() => setActiveTab('add-single')}>➕ Tekli Ekle</TabButton>
-                <TabButton active={activeTab === 'add-ai'} onClick={() => setActiveTab('add-ai')}>✨ AI ile Üret</TabButton>
-                <TabButton active={activeTab === 'bulk'} onClick={() => setActiveTab('bulk')}>📂 Toplu İşlemler</TabButton>
+                <TabButton active={activeTab === 'add-single'} onClick={() => setActiveTab('add-single')}>📝 Tekli Soru Ekle</TabButton>
+                <TabButton active={activeTab === 'add-ai'} onClick={() => setActiveTab('add-ai')}>✨ AI ile Soru Ekle</TabButton>
+                <TabButton active={activeTab === 'bulk'} onClick={() => setActiveTab('bulk')}>📦 Toplu İşlemler</TabButton>
             </div>
-            <div className="flex-grow relative">
-                <div style={{ display: activeTab === 'manage' ? 'block' : 'none' }} className="absolute inset-0 overflow-y-auto p-3 sm:p-6">
-                    <div className="flex flex-wrap gap-4 mb-4">
-                        <SummaryCard value={questionSummary.total} label="Toplam Soru" />
-                        <SummaryCard value={questionSummary.distinctTopics} label="Farklı Konu" />
-                        {Object.entries(questionSummary.byGrade).map(([grade, count]) => (
-                            <SummaryCard key={grade} value={count} label={`${grade}. Sınıf Soruları`} />
-                        ))}
-                    </div>
-
-                    <input 
-                        type="search" 
-                        placeholder="🔍 Soru veya konuda ara..." 
-                        className="w-full p-3 bg-slate-900/70 rounded-lg border border-slate-700 mb-4"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                    />
-                    <div className="space-y-4">
-                        {Object.keys(groupedAndFilteredQuestions).length > 0 ? (
-                            Object.entries(groupedAndFilteredQuestions)
-                            .sort(([a], [b]) => Number(a) - Number(b))
-                            .map(([grade, topics]) => (
-                                <details key={grade} open className="bg-slate-900/30 rounded-lg transition-all duration-300">
-                                    <summary className="p-4 font-bold text-xl cursor-pointer text-cyan-300 hover:bg-slate-800/50 rounded-t-lg list-none flex justify-between items-center">
-                                        <span>{grade}. Sınıf</span>
-                                        <span className="text-sm font-normal text-slate-400">
-                                            {Object.values(topics).flatMap(kazs => Object.values(kazs)).flat().length} soru
-                                        </span>
-                                    </summary>
-                                    <div className="px-4 pb-4 border-t border-slate-700 space-y-3">
-                                        {Object.entries(topics).map(([topic, kazanımlar]) => (
-                                            <details key={topic} open className="bg-slate-800/50 rounded-md pt-2">
-                                                <summary className="p-3 font-semibold text-lg cursor-pointer text-indigo-300 hover:bg-slate-700/50 rounded-t-md list-none flex justify-between items-center">
-                                                    <span>{topic}</span>
-                                                    <span className="text-xs font-normal text-slate-400">
-                                                        {Object.values(kazanımlar).flat().length} soru
-                                                    </span>
-                                                </summary>
-                                                <div className="p-3 border-t border-slate-600/50 space-y-3">
-                                                    {Object.entries(kazanımlar).map(([kazanımId, questionList]) => (
-                                                    <div key={kazanımId}>
-                                                        <h4 className="font-medium text-amber-300/90 mb-2 text-sm pl-2">
-                                                            {kazanımId === 'Diğer' ? 'Kazanım Belirtilmemiş' : `${kazanımId} - ${kazanımIdToTextMap.get(kazanımId) || 'Bilinmeyen Kazanım'}`}
-                                                        </h4>
-                                                        <div className="space-y-2 pl-2">
-                                                            {questionList.map(q => (
-                                                                <div key={q.id} className="bg-slate-700/50 p-3 rounded-lg flex justify-between items-start gap-4">
-                                                                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                                                                        {q.imageUrl && <span title="Bu sorunun bir resmi var" className="mt-1">🖼️</span>}
-                                                                        <div className="flex-1">
-                                                                            <p className="font-semibold text-white/90 break-words">{q.type === 'quiz' ? q.question : q.type === 'fill-in' ? q.sentence.replace('___', '...') : q.question || q.topic}</p>
-                                                                            <p className="text-xs text-slate-400">{q.difficulty} - {q.type}</p>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2 flex-shrink-0 self-center">
-                                                                        <button onClick={() => onSelectQuestion(q)} className="bg-cyan-600/80 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-md text-sm transition-transform hover:scale-105">Seç</button>
-                                                                        <button onClick={() => setEditingQuestion(q)} className="bg-blue-600/80 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md text-sm transition-transform hover:scale-105">Düzenle</button>
-                                                                        <button onClick={() => setModal({isOpen: true, onConfirm: () => deleteQuestion(q.id)})} className="bg-red-600/80 hover:bg-red-500 text-white px-3 py-1.5 rounded-md text-sm transition-transform hover:scale-105">Sil</button>
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                    ))}
-                                                </div>
-                                            </details>
-                                        ))}
-                                    </div>
-                                </details>
-                            ))
-                        ) : (
-                            <p className="text-center text-slate-400 p-8">Bu derse ait veya arama kriterlerinize uygun soru bulunamadı.</p>
-                        )}
-                    </div>
-                </div>
-
-                <div style={{ display: activeTab === 'add-single' ? 'block' : 'none' }} className="absolute inset-0">
-                    <ManualQuestionForm onAddQuestion={addQuestion} />
-                </div>
-
-                <div style={{ display: activeTab === 'add-ai' ? 'block' : 'none' }} className="absolute inset-0 overflow-y-auto p-3 sm:p-6">
-                    <AIGenerator onQuestionGenerated={handleAIQuestion} selectedSubjectId={selectedSubjectId} />
-                </div>
-                
-                <div style={{ display: activeTab === 'bulk' ? 'block' : 'none' }} className="absolute inset-0 overflow-y-auto p-3 sm:p-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-full">
-                        <div className="lg:col-span-3 flex flex-col h-full">
-                            <h3 className="text-xl font-bold text-cyan-300 mb-2">📂 Toplu İşlemler</h3>
-                            <p className="text-slate-400 mb-4">Soruları JSON formatında içe aktarın veya mevcut soru bankanızı dışa aktarın.</p>
-                            
-                            <textarea
-                                value={jsonInput}
-                                onChange={e => { setJsonInput(e.target.value); setBulkMessage({type: '', text: ''}); }}
-                                placeholder='[ { "grade": 5, "topic": "...", "kazanımId": "...", "type": "quiz", ... } ]'
-                                className="w-full flex-grow p-3 bg-slate-900/70 rounded-lg border border-slate-700 font-mono text-sm resize-none"
+            
+            <div className="flex-grow overflow-y-auto relative">
+                {activeTab === 'manage' && (
+                    <div className="p-4 sm:p-6 space-y-6">
+                        <div className="flex flex-wrap gap-4">
+                            <SummaryCard value={questionSummary.total} label="Toplam Soru" />
+                            <SummaryCard value={questionSummary.distinctTopics} label="Farklı Konu" />
+                            <SummaryCard value={questionSummary.byGrade[5]} label="5. Sınıf" />
+                            <SummaryCard value={questionSummary.byGrade[6]} label="6. Sınıf" />
+                            <SummaryCard value={questionSummary.byGrade[7]} label="7. Sınıf" />
+                            <SummaryCard value={questionSummary.byGrade[8]} label="8. Sınıf" />
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-4 items-center">
+                            <input
+                                type="text"
+                                placeholder="Konu veya soru metninde ara..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="flex-grow p-3 bg-slate-800 rounded-md border border-slate-600 w-full"
                             />
-                             <p className="text-xs text-slate-500 mt-2">
-                                İpucu: JSON verinizi kopyalayıp yapıştırırken, özellikle metin içindeki satır sonu gibi görünmez karakterler hataya neden olabilir. Verinizi bir kod editöründe kontrol etmek faydalı olabilir.
-                            </p>
-                            <div className="flex flex-col gap-4 mt-4">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <Button onClick={handleBulkImport} className="w-full">📥 Soruları İçe Aktar</Button>
-                                    <Button onClick={handleExportQuestions} variant="secondary" className="w-full">📤 Soruları Dışa Aktar</Button>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <Button onClick={handleGenerateCode} variant="warning" className="w-full">
-                                        {'<> Soruları Koda Göm'}
-                                    </Button>
-                                    <Button onClick={() => setShowResetConfirm(true)} variant="warning" className="w-full">
-                                      🔄 Çözülen Soruları Sıfırla
-                                    </Button>
-                                </div>
-                                <Button onClick={() => setShowClearAllConfirm(true)} variant="secondary" className="w-full mt-4">
-                                    🗑️ Tüm Verileri Temizle
-                                </Button>
+                            <div className="flex gap-2">
+                                <Button onClick={() => setShowResetConfirm(true)} variant="warning" className="text-sm px-4 py-2 whitespace-nowrap">Çözülenleri Sıfırla</Button>
+                                <Button onClick={() => setShowClearAllConfirm(true)} variant="secondary" className="text-sm px-4 py-2 whitespace-nowrap">Tüm Veriyi Sil</Button>
                             </div>
-                            {bulkMessage.text && (
-                                <p className={`mt-4 text-center p-2 rounded-md whitespace-pre-wrap ${bulkMessage.type === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
-                                    {bulkMessage.text}
-                                </p>
-                            )}
                         </div>
 
-                        <div className="lg:col-span-2 flex flex-col gap-4">
-                            <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 flex flex-col h-full">
-                                <h4 className="text-lg font-semibold mb-3">Örnek JSON Formatı</h4>
-                                <div className="space-y-3 mb-3">
-                                  <select value={exampleGrade} onChange={(e) => setExampleGrade(Number(e.target.value))} className="w-full p-2 bg-slate-800 rounded-md border border-slate-600">
-                                    {[5, 6, 7, 8].map(grade => (<option key={grade} value={grade}>{grade}. Sınıf</option>))}
-                                  </select>
-                                  <select value={exampleOgrenmeAlani} onChange={(e) => setExampleOgrenmeAlani(e.target.value)} className="w-full p-2 bg-slate-800 rounded-md border border-slate-600">
-                                    <option value="">Öğrenme Alanı Seçin</option>
-                                    {exampleOgrenmeAlanlari.map(oa => <option key={oa.name} value={oa.name}>{oa.name}</option>)}
-                                  </select>
-                                  <select value={exampleKazanımId} onChange={(e) => setExampleKazanımId(e.target.value)} className="w-full p-2 bg-slate-800 rounded-md border border-slate-600" disabled={!exampleOgrenmeAlani}>
-                                     <option value="">Kazanım Seçin</option>
-                                     {exampleKazanımlar.map(k => <option key={k.id} value={k.id}>{k.id}</option>)}
-                                  </select>
-                                  <select value={exampleType} onChange={(e) => setExampleType(e.target.value as QuestionType)} className="w-full p-2 bg-slate-800 rounded-md border border-slate-600">
-                                    {(['quiz', 'fill-in', 'matching'] as QuestionType[]).map(type => (<option key={type} value={type}>{typeLabels[type]}</option>))}
-                                  </select>
+                        <div className="space-y-4">
+                        {Object.keys(groupedAndFilteredQuestions).length > 0 ? Object.entries(groupedAndFilteredQuestions).map(([grade, topics]) => (
+                            <div key={grade}>
+                                <h3 className="text-2xl font-bold text-cyan-300 mb-2">{grade}. Sınıf</h3>
+                                {Object.entries(topics).map(([topic, kazanims]) => (
+                                    <div key={topic} className="mb-4 pl-4 border-l-2 border-slate-700">
+                                        <h4 className="text-xl font-semibold text-teal-300">{topic}</h4>
+                                        {Object.entries(kazanims).map(([kazanımId, questionsInKazanım]) => (
+                                            <div key={kazanımId} className="mt-2 pl-4">
+                                                <p className="text-amber-300 font-bold">{kazanımId}</p>
+                                                <p className="text-slate-400 text-sm mb-2">{kazanımIdToTextMap.get(kazanımId)}</p>
+                                                <div className="space-y-2">
+                                                {questionsInKazanım.map(q => (
+                                                    <div key={q.id} className="bg-slate-900/70 p-3 rounded-lg flex justify-between items-start gap-2">
+                                                        <div className="flex-grow">
+                                                            <p className="font-semibold text-slate-200">{q.type === 'quiz' ? q.question : q.type === 'fill-in' ? q.sentence : q.question || 'Eşleştirme'}</p>
+                                                            <div className="text-xs text-slate-400 flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                                                                <span>{typeLabels[q.type]}</span>
+                                                                <span>{q.difficulty.charAt(0).toUpperCase() + q.difficulty.slice(1)}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex-shrink-0 flex gap-2">
+                                                            <Button onClick={() => onSelectQuestion(q)} className="text-xs px-3 py-1">Test Et</Button>
+                                                            <Button onClick={() => setEditingQuestion(q)} variant="warning" className="text-xs px-3 py-1">Düzenle</Button>
+                                                            <Button onClick={() => setModal({isOpen: true, onConfirm: () => deleteQuestion(q.id)})} variant="secondary" className="text-xs px-3 py-1">Sil</Button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                        )) : <p className="text-slate-400 text-center py-8">Bu derse ait soru bulunamadı veya arama kriterleriyle eşleşmedi.</p>}
+                        </div>
+                    </div>
+                )}
+                {activeTab === 'add-single' && <ManualQuestionForm onAddQuestion={addQuestion} />}
+                {activeTab === 'add-ai' && <AIGenerator onQuestionGenerated={handleAIQuestion} selectedSubjectId={selectedSubjectId}/>}
+                {activeTab === 'bulk' && (
+                    <div className="p-4 sm:p-6 space-y-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div>
+                                <h3 className="text-xl font-bold text-green-300 mb-3">Toplu Soru İçe Aktar (JSON)</h3>
+                                <p className="text-slate-400 mb-2">JSON formatındaki soru listenizi buraya yapıştırarak toplu olarak ekleyebilirsiniz.</p>
+                                <textarea
+                                    value={jsonInput}
+                                    onChange={(e) => setJsonInput(e.target.value)}
+                                    placeholder='[ { "grade": 5, "topic": "...", ... } ]'
+                                    className="w-full h-48 p-2 bg-slate-900 rounded-md border border-slate-600 font-mono text-sm"
+                                />
+                                <Button onClick={handleBulkImport} variant="success" className="mt-2 w-full">İçe Aktar</Button>
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-amber-300 mb-3">Dışa Aktar & Örnek JSON</h3>
+                                 <div className="flex gap-4 mb-4">
+                                    <Button onClick={handleExportQuestions} className="flex-1">Tüm Soruları Dışa Aktar</Button>
+                                    <Button onClick={handleGenerateCode} variant="warning" className="flex-1">Koda Göm</Button>
                                 </div>
-                                <pre className="bg-slate-900 p-3 rounded-lg text-xs overflow-auto font-mono flex-grow">
+                                <p className="text-slate-400 mb-2">Aşağıda seçtiğiniz kriterlere göre örnek bir JSON formatı görebilirsiniz.</p>
+                                 <div className="grid grid-cols-2 gap-2 mb-2">
+                                     <select value={exampleGrade} onChange={e => setExampleGrade(parseInt(e.target.value))} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
+                                         <option value="5">5. Sınıf</option><option value="6">6. Sınıf</option><option value="7">7. Sınıf</option><option value="8">8. Sınıf</option>
+                                     </select>
+                                      <select value={exampleType} onChange={e => setExampleType(e.target.value as QuestionType)} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full">
+                                        <option value="quiz">Çoktan Seçmeli</option><option value="fill-in">Boşluk Doldurma</option><option value="matching">Eşleştirme</option>
+                                    </select>
+                                    <select value={exampleOgrenmeAlani} onChange={e => setExampleOgrenmeAlani(e.target.value)} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full col-span-2">
+                                         <option value="">Öğrenme Alanı Seçin</option>
+                                         {exampleOgrenmeAlanlari.map(oa => <option key={oa.name} value={oa.name}>{oa.name}</option>)}
+                                     </select>
+                                      <select value={exampleKazanımId} onChange={e => setExampleKazanımId(e.target.value)} disabled={!exampleOgrenmeAlani} className="p-2 bg-slate-800 rounded-md border border-slate-600 w-full col-span-2 disabled:opacity-50">
+                                         <option value="">Kazanım Seçin</option>
+                                         {exampleKazanımlar.map(k => <option key={k.id} value={k.id}>{k.id} - {k.text}</option>)}
+                                     </select>
+                                 </div>
+                                <pre className="bg-slate-900 p-3 rounded-lg text-xs overflow-auto h-48 font-mono border border-slate-700">
                                     <code>{currentExampleJson}</code>
                                 </pre>
                             </div>
                         </div>
+
+                         {bulkMessage.text && <p className={`text-center p-2 rounded-md ${bulkMessage.type === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>{bulkMessage.text}</p>}
                     </div>
-                 </div>
+                )}
             </div>
         </div>
-        {editingQuestion && (
-            <QuestionEditModal 
-                question={editingQuestion}
-                onSave={handleUpdateQuestion}
-                onCancel={() => setEditingQuestion(null)}
-            />
-        )}
+
         <Modal 
             isOpen={modal.isOpen} 
             title="Soruyu Sil" 
-            message="Bu soruyu silmek istediğinizden emin misiniz? Bu işlem geri alınamaz."
-            onConfirm={modal.onConfirm}
-            onCancel={() => setModal({isOpen: false, onConfirm: () => {}})}
+            message="Bu soruyu silmek istediğinizden emin misiniz? Bu işlem geri alınamaz." 
+            onConfirm={modal.onConfirm} 
+            onCancel={() => setModal({isOpen: false, onConfirm: () => {}})} 
         />
-        <CodeExportModal
-            isOpen={showCodeModal}
-            code={generatedCode}
-            onClose={() => setShowCodeModal(false)}
-        />
-        <Modal
+        <Modal 
             isOpen={showResetConfirm}
-            title="Çözülen Soruları Sıfırla"
-            message="Bu işlem, daha önce çözülmüş tüm soruları tekrar oynanabilir hale getirecektir. Bu işlem geri alınamaz. Emin misiniz?"
-            onConfirm={() => {
-                onResetSolvedQuestions();
-                setShowResetConfirm(false);
-                setBulkMessage({ type: 'success', text: 'Çözülen sorular başarıyla sıfırlandı! Artık tüm sorular yeniden oynanabilir.' });
-            }}
+            title="Çözülenleri Sıfırla"
+            message="Tüm öğrencilerin çözdüğü soruların kaydını sıfırlamak istediğinizden emin misiniz? Bu, tüm soruların tekrar çözülebilir olmasını sağlar."
+            onConfirm={() => { onResetSolvedQuestions(); setShowResetConfirm(false); alert('Çözülen soru kayıtları sıfırlandı.'); }}
             onCancel={() => setShowResetConfirm(false)}
         />
-        <Modal
+        <Modal 
             isOpen={showClearAllConfirm}
-            title="Tüm Verileri Temizle"
-            message="Bu işlem, soru bankasını, yüksek skorları ve çözülmüş soru geçmişini kalıcı olarak silecektir. Bu işlem geri alınamaz. Emin misiniz?"
-            onConfirm={() => {
-                onClearAllData();
-                setShowClearAllConfirm(false);
-                setBulkMessage({ type: 'success', text: 'Tüm uygulama verileri başarıyla sıfırlandı!' });
-            }}
+            title="Tüm Veriyi Sil"
+            message="UYARI: Bu işlem, eklediğiniz TÜM soruları, yüksek skorları ve çözülen soru kayıtlarını kalıcı olarak silecektir. Bu işlem geri alınamaz. Emin misiniz?"
+            onConfirm={() => { onClearAllData(); setShowClearAllConfirm(false); alert('Tüm uygulama verileri silindi.'); }}
             onCancel={() => setShowClearAllConfirm(false)}
         />
+        {editingQuestion && <QuestionEditModal question={editingQuestion} onSave={handleUpdateQuestion} onCancel={() => setEditingQuestion(null)} />}
+        <CodeExportModal isOpen={showCodeModal} code={generatedCode} onClose={() => setShowCodeModal(false)} />
     </div>
   );
 };

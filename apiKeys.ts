@@ -6,13 +6,14 @@
 
 export const subjectApiKeys: Record<string, string> = {
   // Lütfen tırnak işaretlerinin ('') arasına kendi API anahtarlarınızı yapıştırın.
-  'social-studies': 'AIzaSyCSl_xSycRRGOAnPjHGPNHvPmauKW35iWI', // <-- Sosyal Bilgiler API Anahtarınız
-  'math': 'AIzaSyAJMXhd0pjkg31x0eNFADLaBHg74PpL1sA',           // <-- Matematik API Anahtarınız
-  'science': 'AIzaSyAJMXhd0pjkg31x0eNFADLaBHg74PpL1sA',        // <-- Fen Bilimleri API Anahtarınız
-  'turkish': 'AIzaSyAJMXhd0pjkg31x0eNFADLaBHg74PpL1sA',        // <-- Türkçe API Anahtarınız
-  'english': 'AIzaSyAJMXhd0pjkg31x0eNFADLaBHg74PpL1sA',        // <-- İngilizce API Anahtarınız
+  'social-studies': 'AIzaSyDPasBMHG6-T8Rilg06xmfhwkwClSqdnYg', // <-- Sosyal Bilgiler API Anahtarınız
+  'math': 'AIzaSyAQgZB22xThNCqsmjfgAIJFmuWv4nKSOxY',           // <-- Matematik API Anahtarınız
+  'science': 'AIzaSyA863DSKi8dVUcs8a_d0ciKqqOcf8J_y8E',        // <-- Fen Bilimleri API Anahtarınız
+  'turkish': 'AIzaSyA9pXHICAieT_0cPkjQVMEhbY3qt9_naFQ',        // <-- Türkçe API Anahtarınız
+  'english': 'AIzaSyAz5wgB3JGcjzDu9Z7w93RMy0y6Wjyjzo4',        // <-- İngilizce API Anahtarınız
+  'paragraph': 'AIzaSyBqh3LG-EBkGujZXrHJW3fFL_jidz1svlM',      // <-- Paragraf Soru Bankası API Anahtarınız
 };
 
 // Yukarıda bir derse özel anahtar belirtilmemişse veya bulunamazsa kullanılacak
 // varsayılan (yedek) API anahtarı.
-export const defaultApiKey = 'AIzaSyAJMXhd0pjkg31x0eNFADLaBHg74PpL1sA'; // <-- Genel veya tek API Anahtarınızı buraya yapıştırın
+export const defaultApiKey = 'AIzaSyCSl_xSycRRGOAnPjHGPNHvPmauKW35iWI'; // <-- Genel veya tek API Anahtarınızı buraya yapıştırın

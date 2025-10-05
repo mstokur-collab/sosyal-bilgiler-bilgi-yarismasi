@@ -1518,5 +1518,51 @@ export const curriculumData: Record<string, Record<number, OgrenmeAlani[]>> = {
       { name: 'Science (Bilim)', altKonular: []},
       { name: 'Natural Forces (Doğal Afetler)', altKonular: []}
     ]
+  },
+  'paragraph': {
+    5: [
+      {
+        name: 'Paragraf Okuduğunu Anlama',
+        altKonular: [{
+          name: 'Paragraf Okuduğunu Anlama',
+          kazanımlar: [
+            { id: 'P.5.1', text: 'Okuduğu metindeki ana düşünceyi, yardımcı düşünceleri ve konuyu belirler.' }
+          ]
+        }]
+      }
+    ],
+    6: [
+      {
+        name: 'Paragraf Okuduğunu Anlama',
+        altKonular: [{
+          name: 'Paragraf Okuduğunu Anlama',
+          kazanımlar: [
+            { id: 'P.6.1', text: 'Okuduğu metinle ilgili çıkarımlarda bulunur ve metni yorumlar.' }
+          ]
+        }]
+      }
+    ],
+    7: [
+      {
+        name: 'Paragraf Okuduğunu Anlama',
+        altKonular: [{
+          name: 'Paragraf Okuduğunu Anlama',
+          kazanımlar: [
+            { id: 'P.7.1', text: 'Metindeki anlatım biçimlerini ve düşünceyi geliştirme yollarını belirler.' }
+          ]
+        }]
+      }
+    ],
+    8: [
+      {
+        name: 'Paragraf Okuduğunu Anlama',
+        altKonular: [{
+          name: 'Paragraf Okuduğunu Anlama',
+          kazanımlar: [
+            { id: 'P.8.1', text: 'Metnin dil ve anlatım özelliklerini değerlendirir, metnin yazılış amacını belirler.' }
+          ]
+        }]
+      }
+    ]
   }
 };

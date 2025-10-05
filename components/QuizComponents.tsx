@@ -7,6 +7,7 @@ import { Button, Modal } from './UI';
 const QUESTION_TIME_QUIZ = 40;
 const QUESTION_TIME_FILL_IN = 35;
 const QUESTION_TIME_MATCHING = 40;
+const QUESTION_TIME_PARAGRAPH = 70; // Paragraf soruları için yeni zaman sabiti
 const MASTER_TIME_DEFAULT = 120; // 2 minutes for timed challenge
 
 // FIX: Added missing 'AnswerState' interface definition.
@@ -237,9 +238,10 @@ interface GameScreenProps {
   onGameEnd: (score: number, finalGroupScores?: { grup1: number, grup2: number }) => void;
   onQuestionAnswered: (questionId: number) => void;
   groupNames?: { grup1: string, grup2: string };
+  subjectId: string;
 }
 
-export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onGameEnd, onQuestionAnswered, groupNames }) => {
+export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onGameEnd, onQuestionAnswered, groupNames, subjectId }) => {
     const { quizMode = 'klasik' } = settings;
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
@@ -285,8 +287,37 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const currentAnswerState = answers[currentQuestionIndex];
     const isAnswered = !!currentAnswerState;
 
-    const questionTextForSizing = (currentQuestion?.type === 'quiz' ? (currentQuestion as QuizQuestion).question : (currentQuestion as FillInQuestion)?.sentence) || '';
-    const questionTextRef = useFitText(questionTextForSizing);
+    // FIX: All hooks are moved to the top-level to prevent conditional rendering errors.
+    const isParagraphQuestion = useMemo(() => {
+        if (currentQuestion?.type !== 'quiz') return false;
+        return subjectId === 'paragraph' && (currentQuestion as QuizQuestion).question.includes('\n\n');
+    }, [currentQuestion, subjectId]);
+
+    const { paragraph, questionText } = useMemo(() => {
+        if (!currentQuestion) return { paragraph: null, questionText: '' };
+
+        if (currentQuestion.type === 'quiz') {
+            const quizQuestion = currentQuestion as QuizQuestion;
+            if (isParagraphQuestion) {
+                const parts = quizQuestion.question.split('\n\n');
+                return {
+                    paragraph: parts.slice(0, -1).join('\n\n'),
+                    questionText: parts.slice(-1)[0]
+                };
+            }
+            return { paragraph: null, questionText: quizQuestion.question };
+        }
+        
+        if (currentQuestion.type === 'fill-in') {
+            return { paragraph: null, questionText: (currentQuestion as FillInQuestion).sentence };
+        }
+
+        return { paragraph: null, questionText: '' };
+    }, [currentQuestion, isParagraphQuestion]);
+
+    // This hook is now called unconditionally. For paragraph questions which don't need
+    // text fitting, we pass an empty string to satisfy the rules of hooks.
+    const questionTextRef = useFitText(isParagraphQuestion ? '' : (questionText || ''));
 
     const { grup1: grup1Name = 'Grup 1', grup2: grup2Name = 'Grup 2' } = groupNames || {};
     
@@ -427,18 +458,23 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     useEffect(() => {
         if (quizMode === 'klasik' || quizMode === 'hayatta-kalma') {
             let time;
-            switch(currentQuestion?.type) {
-                case 'quiz':
-                    time = QUESTION_TIME_QUIZ;
-                    break;
-                case 'fill-in':
-                    time = QUESTION_TIME_FILL_IN;
-                    break;
-                case 'matching':
-                    time = QUESTION_TIME_MATCHING;
-                    break;
-                default:
-                    time = QUESTION_TIME_QUIZ; // Default to quiz time
+
+            if (subjectId === 'paragraph' && currentQuestion?.type === 'quiz') {
+                time = QUESTION_TIME_PARAGRAPH;
+            } else {
+                switch(currentQuestion?.type) {
+                    case 'quiz':
+                        time = QUESTION_TIME_QUIZ;
+                        break;
+                    case 'fill-in':
+                        time = QUESTION_TIME_FILL_IN;
+                        break;
+                    case 'matching':
+                        time = QUESTION_TIME_MATCHING;
+                        break;
+                    default:
+                        time = QUESTION_TIME_QUIZ; // Default to quiz time
+                }
             }
             
             if (quizMode === 'hayatta-kalma') {
@@ -446,7 +482,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
             }
             setTimeLeft(time);
         }
-    }, [currentQuestionIndex, currentQuestion?.type, quizMode, streak]);
+    }, [currentQuestionIndex, currentQuestion?.type, quizMode, streak, subjectId]);
     
     const handlePrev = () => { if (currentQuestionIndex > 0) setCurrentQuestionIndex(prev => prev - 1); };
     
@@ -513,9 +549,16 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                                 onClick={() => setLightboxImageUrl(quizQuestion.imageUrl)}
                             />
                         )}
-                        <div className="question-text-container">
-                            <div ref={questionTextRef} className="question-text">{quizQuestion.question}</div>
-                        </div>
+                        {isParagraphQuestion ? (
+                            <div className="question-text-container paragraph-mode">
+                                <p className="paragraph-text">{paragraph}</p>
+                                <p className="question-text-for-paragraph">{questionText}</p>
+                            </div>
+                        ) : (
+                            <div className="question-text-container">
+                                <div ref={questionTextRef} className="question-text">{questionText}</div>
+                            </div>
+                        )}
                         <div className="answer-options">
                             {optionsToShow.map((option) => (
                                 <button key={option} onClick={() => selectAnswer(option)} disabled={(isAnswered && quizMode !== 'zamana-karsi') || disabledByJokerOptions.includes(option)} className={`option ${getOptionClass(option)}`}>

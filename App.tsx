@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 // FIX: Imported 'CompetitionMode' type to resolve a 'Cannot find name' error on line 77.
 import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode } from './types';
@@ -20,6 +19,7 @@ const availableSubjects: Subject[] = [
     { id: 'science', name: 'Fen Bilimleri', icon: '🧪' },
     { id: 'turkish', name: 'Türkçe', icon: '🇹🇷' },
     { id: 'english', name: 'İngilizce', icon: '🇬🇧' },
+    { id: 'paragraph', name: 'Paragraf Soru Bankası', icon: '📖' },
 ];
 
 
@@ -275,7 +275,8 @@ export default function App() {
             case 'kazanim-select':
                 const learningAreas = curriculumData[selectedSubject!.id]?.[gameSettings.grade!] || [];
                 const selectedArea = learningAreas.find(oa => oa.name === gameSettings.topic);
-                const availableKazanims = selectedArea?.altKonular[0]?.kazanımlar || [];
+                // FIX: Flatten kazanımlar from all altKonular within the selected learning area.
+                const availableKazanims = selectedArea?.altKonular.flatMap(ak => ak.kazanımlar) || [];
                 return (
                     <Screen id="kazanim-select" isActive={true}>
                         <BackButton onClick={() => setScreen('learning-area-select')} />
@@ -561,6 +562,7 @@ export default function App() {
                             onGameEnd={handleGameEnd} 
                             groupNames={groupNames}
                             onQuestionAnswered={handleQuestionAnswered}
+                            subjectId={selectedSubject!.id}
                         />
                     </Screen>
                 ) : (
@@ -621,6 +623,14 @@ export default function App() {
                     </Screen>
                 );
             case 'teacher-panel':
+                if (!selectedSubject) {
+                    return (
+                        <Screen id="error-screen" isActive={true}>
+                            <p className="text-xl mb-4">Öğretmen paneline erişmek için lütfen önce bir ders seçin.</p>
+                            <Button onClick={() => setScreen('subject-select')}>Ana Menüye Dön</Button>
+                        </Screen>
+                    );
+                }
                 return (
                     <Screen id="teacher-panel-screen" isActive={true} className="p-0 sm:p-0">
                          <BackButton onClick={() => setScreen('start')} />
@@ -630,7 +640,7 @@ export default function App() {
                             onSelectQuestion={handleSelectQuestion}
                             onResetSolvedQuestions={resetSolvedQuestions}
                             onClearAllData={handleClearAllData}
-                            selectedSubjectId={selectedSubject!.id}
+                            selectedSubjectId={selectedSubject.id}
                          />
                     </Screen>
                 );

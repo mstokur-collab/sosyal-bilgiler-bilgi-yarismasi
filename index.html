@@ -153,6 +153,40 @@
       .question-card::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
       .question-card::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
       
+      /* Styles for paragraph questions */
+      .question-text-container.paragraph-mode {
+        flex-direction: column; /* Stack paragraph and question */
+        justify-content: flex-start; /* Align to top */
+        align-items: stretch; /* Stretch children */
+        padding: 16px;
+        overflow: hidden; /* Keep this, but child will scroll */
+      }
+
+      .paragraph-text {
+        flex: 1 1 auto; /* Allow grow and shrink, with auto basis */
+        min-height: 0; /* Important for scrolling in flexbox */
+        overflow-y: auto; /* Allow paragraph to scroll */
+        text-align: left;
+        font-size: 17px;
+        line-height: 1.6;
+        padding-right: 8px; /* space for scrollbar */
+      }
+
+      .question-text-for-paragraph {
+        flex-shrink: 0; /* Prevent the question text from shrinking */
+        text-align: center;
+        font-size: 20px;
+        font-weight: 600;
+        padding-top: 12px;
+        margin-top: 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.15);
+      }
+
+      .paragraph-text::-webkit-scrollbar { width: 6px; }
+      .paragraph-text::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 3px; }
+      .paragraph-text::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 3px; }
+      .paragraph-text::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+
       .question-text-container {
         min-height: 120px;
         display: flex;
@@ -260,6 +294,20 @@
           padding: 12px; 
           gap: 12px;
         }
+        
+        .question-text-container.paragraph-mode {
+          padding: 12px;
+        }
+        .paragraph-text {
+          font-size: 16px;
+          line-height: 1.55;
+        }
+        .question-text-for-paragraph {
+          font-size: 18px;
+          padding-top: 10px;
+          margin-top: 10px;
+        }
+
         .question-text-container { 
           min-height: 80px; 
           padding: 10px; 

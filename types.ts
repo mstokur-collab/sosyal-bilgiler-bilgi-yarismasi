@@ -80,3 +80,10 @@ export type DocumentLibraryItem = {
   content: { mimeType: string; data: string };
   topics: string[];
 };
+
+export interface Exam {
+  id: number;
+  name: string;
+  content: string;
+  createdAt: number;
+}

@@ -1,10 +1,13 @@
+// FIX: Add missing import for React and hooks to resolve multiple 'Cannot find name' errors.
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 // FIX: Imported 'GameSettings' type to resolve a 'Cannot find name' error.
-import type { Question, Difficulty, QuestionType, DocumentLibraryItem, QuizQuestion, GameSettings } from '../types';
-import { generateQuestionWithAI, generateImageForQuestion, extractQuestionFromImage, extractTopicsFromPDF } from '../services/geminiService';
+import type { Question, Difficulty, QuestionType, DocumentLibraryItem, QuizQuestion, GameSettings, Exam } from '../types';
+import { generateQuestionWithAI, generateImageForQuestion, extractQuestionFromImage, extractTopicsFromPDF, generateExamFromReference } from '../services/geminiService';
 import { curriculumData } from '../data/curriculum';
 import { Button, Modal } from './UI';
 import { PromptTemplateGenerator } from './PromptTemplateGenerator';
+
+declare const mammoth: any;
 
 const fileToBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -23,6 +26,8 @@ interface TeacherPanelProps {
   selectedSubjectId: string;
   documentLibrary: DocumentLibraryItem[];
   setDocumentLibrary: React.Dispatch<React.SetStateAction<DocumentLibraryItem[]>>;
+  generatedExams: Exam[];
+  setGeneratedExams: React.Dispatch<React.SetStateAction<Exam[]>>;
   onBack: () => void;
 }
 
@@ -484,110 +489,158 @@ const Tools: React.FC<{ onResetSolvedQuestions: () => void; onClearAllData: () =
     );
 };
 
-const ExamGenerator: React.FC<{ documentLibrary: DocumentLibraryItem[] }> = ({ documentLibrary }) => {
-    const [step, setStep] = useState(1);
+const ExamGenerator: React.FC<{
+    generatedExams: Exam[];
+    setGeneratedExams: React.Dispatch<React.SetStateAction<Exam[]>>;
+}> = ({ generatedExams, setGeneratedExams }) => {
     const [referenceFile, setReferenceFile] = useState<File | null>(null);
-    const [selectedDocumentId, setSelectedDocumentId] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
-    const [generatedExam, setGeneratedExam] = useState<string | null>(null);
+    const [expandedExamId, setExpandedExamId] = useState<number | null>(null);
+    const [copyStatus, setCopyStatus] = useState<{ id: number | null, text: string }>({ id: null, text: 'Panoya Kopyala' });
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             const allowedTypes = [
                 'application/pdf',
-                'application/msword',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
             ];
             if (allowedTypes.includes(file.type)) {
                 setReferenceFile(file);
                 setError('');
             } else {
-                setError('Lütfen PDF veya Word (.doc, .docx) dosyası yükleyin.');
+                setError('Lütfen PDF veya .docx formatında bir dosya yükleyin.');
                 setReferenceFile(null);
             }
         }
     };
 
     const handleGenerateExam = async () => {
-        if (!referenceFile || !selectedDocumentId) {
-            setError('Lütfen referans yazılıyı ve kaynak dökümanı seçin.');
+        if (!referenceFile) {
+            setError('Lütfen bir referans yazılı dosyası yükleyin.');
             return;
         }
         setIsLoading(true);
         setError('');
         try {
-            // Placeholder for AI logic
-            await new Promise(res => setTimeout(res, 2500));
-            setGeneratedExam("Yapay zeka tarafından üretilen yazılı kağıdı taslağınız burada görüntülenecektir. Bu alanda soruları düzenleyebilir, silebilir ve son halini PDF olarak indirebilirsiniz.");
-            setStep(3);
+            let fileDataForApi: { mimeType: string; data: string };
+
+            if (referenceFile.type === 'application/pdf') {
+                const base64Data = await fileToBase64(referenceFile);
+                fileDataForApi = {
+                    mimeType: referenceFile.type,
+                    data: base64Data
+                };
+            } else if (referenceFile.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                const arrayBuffer = await referenceFile.arrayBuffer();
+                const result = await mammoth.extractRawText({ arrayBuffer });
+                const text = result.value || '';
+                const base64EncodedText = btoa(unescape(encodeURIComponent(text)));
+                fileDataForApi = {
+                    mimeType: 'text/plain',
+                    data: base64EncodedText
+                };
+            } else {
+                 setError('Desteklenmeyen dosya türü. Lütfen PDF veya .docx dosyası yükleyin.');
+                 setIsLoading(false);
+                 return;
+            }
+
+            const examMarkdown = await generateExamFromReference(fileDataForApi);
+            const examName = examMarkdown.split('\n').find(line => line.trim() !== '')?.replace(/#/g, '').trim() || 'İsimsiz Yazılı';
+
+            const newExam: Exam = {
+                id: Date.now(),
+                name: examName,
+                content: examMarkdown,
+                createdAt: Date.now()
+            };
+
+            setGeneratedExams(prevExams => [newExam, ...prevExams]);
+            setReferenceFile(null); // Clear the file input after generation
+
         } catch (err: any) {
             setError(err.message || 'Yazılı kağıdı üretilirken bir hata oluştu.');
         } finally {
             setIsLoading(false);
         }
     };
-
-    const renderStepContent = () => {
-        switch (step) {
-            case 1:
-                return (
-                    <div className="bg-slate-900/50 p-6 rounded-xl border border-cyan-500/30 text-center animate-fadeIn">
-                        <h4 className="text-lg font-semibold text-cyan-200 mb-2">1. Adım: Referans Yazılı Yükleyin</h4>
-                        <p className="text-slate-400 mb-4 text-sm">Benzerini oluşturmak istediğiniz mevcut yazılı kağıdınızı yükleyin (PDF, DOC, DOCX).</p>
-                        <input
-                            type="file"
-                            accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                            onChange={handleFileChange}
-                            className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100 block w-full text-sm text-slate-400"
-                        />
-                        {referenceFile && <p className="mt-4 text-green-400">Yüklendi: {referenceFile.name}</p>}
-                        {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
-                        <Button onClick={() => setStep(2)} disabled={!referenceFile} className="mt-6">Sonraki Adım →</Button>
-                    </div>
-                );
-            case 2:
-                return (
-                    <div className="bg-slate-900/50 p-6 rounded-xl border border-cyan-500/30 animate-fadeIn">
-                        <h4 className="text-lg font-semibold text-cyan-200 mb-2">2. Adım: Kaynak Ders Kitabını Seçin</h4>
-                        <p className="text-slate-400 mb-4 text-sm">Soruların üretileceği içeriğin kaynağını "Kaynak Kütüphanenizden" seçin.</p>
-                        <Select value={selectedDocumentId} onChange={e => setSelectedDocumentId(e.target.value)}>
-                            <option value="">Kaynak Dökümanı Seçin</option>
-                            {documentLibrary.filter(d => d.content.mimeType === 'application/pdf').map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                        </Select>
-                        {error && <p className="text-red-400 text-sm mt-2 text-center">{error}</p>}
-                        <div className="flex gap-4 mt-6">
-                            <Button onClick={() => setStep(1)} variant="secondary" className="w-full">← Geri</Button>
-                            <Button onClick={handleGenerateExam} disabled={!selectedDocumentId || isLoading} className="w-full">
-                                {isLoading ? 'Oluşturuluyor...' : '✍️ Yazılıyı Oluştur'}
-                            </Button>
-                        </div>
-                    </div>
-                );
-            case 3:
-                return (
-                     <div className="bg-slate-900/50 p-6 rounded-xl border border-cyan-500/30 animate-fadeIn">
-                        <h4 className="text-lg font-semibold text-green-300 mb-2">3. Adım: Önizleme ve Düzenleme</h4>
-                        <p className="text-slate-400 mb-4 text-sm">AI tarafından oluşturulan taslağı inceleyin. (Bu bölüm gelecekte aktif olacaktır.)</p>
-                        <div className="p-4 border border-slate-600 rounded-md bg-slate-800 min-h-[200px] text-slate-300">
-                            {generatedExam}
-                        </div>
-                         <div className="flex gap-4 mt-6">
-                            <Button onClick={() => setStep(2)} variant="secondary" className="w-full">← Geri</Button>
-                            <Button onClick={() => alert('İndirme özelliği yakında eklenecektir.')} variant="success" className="w-full">
-                                PDF Olarak İndir
-                            </Button>
-                        </div>
-                    </div>
-                )
-        }
+    
+    const handleCopyExam = (exam: Exam) => {
+        const cleanMarkdown = exam.content.replace(/<!-- FONT_INFO: (.*) -->\s*/, '');
+        navigator.clipboard.writeText(cleanMarkdown).then(() => {
+            setCopyStatus({ id: exam.id, text: '✅ Kopyalandı!' });
+            setTimeout(() => setCopyStatus({ id: null, text: 'Panoya Kopyala' }), 2500);
+        }).catch(err => {
+            setError('Metin kopyalanamadı. Lütfen manuel olarak kopyalayın.');
+            console.error('Kopyalama hatası:', err);
+        });
     };
 
+    const handleDeleteExam = (idToDelete: number) => {
+        setGeneratedExams(prevExams => prevExams.filter(exam => exam.id !== idToDelete));
+    };
+    
     return (
         <div className="p-4 sm:p-6 space-y-4">
             <h3 className="text-xl font-bold text-cyan-300">Yazılı Kağıdı Asistanı</h3>
-            {renderStepContent()}
+            <div className="bg-slate-900/50 p-6 rounded-xl border border-cyan-500/30 text-center animate-fadeIn">
+                <h4 className="text-lg font-semibold text-cyan-200 mb-2">Referans Yazılı Yükleyin</h4>
+                <p className="text-slate-400 mb-4 text-sm">
+                    AI'ın analiz edip benzerini daha kaliteli bir şekilde oluşturması için mevcut bir yazılı kağıdınızı yükleyin (PDF veya .docx).
+                </p>
+                <input
+                    type="file"
+                    accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={handleFileChange}
+                    className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100 block w-full text-sm text-slate-400"
+                />
+                {referenceFile && <p className="mt-4 text-green-400">Yüklendi: {referenceFile.name}</p>}
+                {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
+                <Button onClick={handleGenerateExam} disabled={!referenceFile || isLoading} className="mt-6">
+                    {isLoading ? 'Yazılı Oluşturuluyor...' : '✍️ AI ile Yeni Yazılı Oluştur'}
+                </Button>
+            </div>
+
+            <div className="mt-8">
+                <h3 className="text-xl font-bold text-green-300 mb-4">Kaydedilmiş Yazılılar</h3>
+                <div className="space-y-2">
+                    {generatedExams.length > 0 ? (
+                        generatedExams.map(exam => (
+                            <div key={exam.id} className="bg-slate-800/50 rounded-lg border border-slate-700 overflow-hidden">
+                                <button 
+                                    onClick={() => setExpandedExamId(expandedExamId === exam.id ? null : exam.id)}
+                                    className="w-full text-left p-4 hover:bg-slate-700/50 transition-colors flex justify-between items-center"
+                                >
+                                    <div>
+                                        <p className="font-semibold text-slate-100">{exam.name}</p>
+                                        <p className="text-xs text-slate-400">{new Date(exam.createdAt).toLocaleString('tr-TR')}</p>
+                                    </div>
+                                    <span className={`transform transition-transform text-2xl ${expandedExamId === exam.id ? 'rotate-180' : ''}`}>▼</span>
+                                </button>
+                                {expandedExamId === exam.id && (
+                                    <div className="p-4 border-t border-slate-700 animate-fadeIn">
+                                        <div className="p-4 border border-slate-600 rounded-md bg-slate-800 min-h-[200px] max-h-[50vh] overflow-y-auto text-slate-300 whitespace-pre-wrap font-sans">
+                                            {exam.content.replace(/<!-- FONT_INFO: (.*) -->\s*/, '')}
+                                        </div>
+                                        <div className="flex flex-col sm:flex-row gap-4 mt-4">
+                                            <Button onClick={() => handleDeleteExam(exam.id)} variant="secondary" className="w-full text-base py-2">
+                                                Sil
+                                            </Button>
+                                            <Button onClick={() => handleCopyExam(exam)} variant="success" className="w-full text-base py-2">
+                                                {copyStatus.id === exam.id ? copyStatus.text : 'Panoya Kopyala'}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-slate-400 text-center py-6">Henüz oluşturulmuş bir yazılı yok.</p>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };
@@ -601,6 +654,8 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   selectedSubjectId,
   documentLibrary,
   setDocumentLibrary,
+  generatedExams,
+  setGeneratedExams,
   onBack,
 }) => {
   const [activeTab, setActiveTab] = useState<'generate' | 'exam-generator' | 'library' | 'import' | 'tools'>('generate');
@@ -610,7 +665,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
       case 'generate':
         return <QuestionGenerator selectedSubjectId={selectedSubjectId} setQuestions={setQuestions} documentLibrary={documentLibrary} />;
       case 'exam-generator':
-        return <ExamGenerator documentLibrary={documentLibrary} />;
+        return <ExamGenerator generatedExams={generatedExams} setGeneratedExams={setGeneratedExams} />;
       case 'library':
         return <QuestionLibrary questions={questions} setQuestions={setQuestions} onSelectQuestion={onSelectQuestion} />;
       case 'import':

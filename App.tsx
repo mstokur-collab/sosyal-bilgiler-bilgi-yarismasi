@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // FIX: Imported 'CompetitionMode' type to resolve a 'Cannot find name' error on line 77.
-import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode, DocumentLibraryItem } from './types';
+import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode, DocumentLibraryItem, Exam } from './types';
 import { Screen, Button, BackButton, DeveloperSignature } from './components/UI';
 import { GameScreen } from './components/QuizComponents';
 import { TeacherPanel } from './components/TeacherPanel';
@@ -64,6 +64,7 @@ export default function App() {
     const [questionsForGame, setQuestionsForGame] = useState<Question[]>([]);
     const [solvedQuestionIds, setSolvedQuestionIds] = usePersistentState<number[]>('solvedQuestionIds', []);
     const [documentLibrary, setDocumentLibrary] = usePersistentState<DocumentLibraryItem[]>('documentLibrary', []);
+    const [generatedExams, setGeneratedExams] = usePersistentState<Exam[]>('generatedExams', []);
     
     useEffect(() => {
         document.body.className = 'theme-dark';
@@ -99,12 +100,14 @@ export default function App() {
         localStorage.removeItem('quizQuestions');
         localStorage.removeItem('quizHighScores');
         localStorage.removeItem('solvedQuestionIds');
+        localStorage.removeItem('generatedExams');
 
         // Reset state to initial values to reflect changes in the UI immediately
         setQuestions(initialQuestions);
         setHighScores([]);
         setSolvedQuestionIds([]);
-    }, [setQuestions, setHighScores, setSolvedQuestionIds]);
+        setGeneratedExams([]);
+    }, [setQuestions, setHighScores, setSolvedQuestionIds, setGeneratedExams]);
 
     const handleGameEnd = useCallback((score: number, finalGroupScores?: { grup1: number, grup2: number }) => {
         const finalScore = finalGroupScores ? Math.max(finalGroupScores.grup1, finalGroupScores.grup2) : score;
@@ -643,6 +646,8 @@ export default function App() {
                             selectedSubjectId={selectedSubject.id}
                             documentLibrary={documentLibrary}
                             setDocumentLibrary={setDocumentLibrary}
+                            generatedExams={generatedExams}
+                            setGeneratedExams={setGeneratedExams}
                             onBack={() => setScreen('start')}
                          />
                     </Screen>

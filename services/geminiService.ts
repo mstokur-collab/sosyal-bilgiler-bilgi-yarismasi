@@ -3,13 +3,12 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, QuestionType } from "../types";
 import { promptTemplates } from '../data/promptTemplates';
 
-if (!process.env.API_KEY) {
-  // According to guidelines, API_KEY is a hard requirement and pre-configured.
-  // A descriptive error is still good practice for developers if the environment is misconfigured.
-  throw new Error("API_KEY environment variable is not set. Please configure it in your environment.");
-}
-
-// Initialize the Google AI client
+// According to guidelines, the API key must be obtained exclusively from the 
+// environment variable `process.env.API_KEY`. We assume this is pre-configured
+// in the deployment environment (e.g., Vercel settings).
+// The previous check `if (!process.env.API_KEY)` was causing the app to crash
+// on startup in browser environments where `process.env` is not populated by default.
+// The code now directly uses the environment variable as required by the guidelines.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 const model = 'gemini-2.5-flash';
 

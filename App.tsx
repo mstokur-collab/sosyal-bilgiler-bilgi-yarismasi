@@ -1,10 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 // FIX: Imported 'CompetitionMode' type to resolve a 'Cannot find name' error on line 77.
 import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode, DocumentLibraryItem, Exam } from './types';
 import { Screen, Button, BackButton, DeveloperSignature } from './components/UI';
-import { GameScreen } from './components/QuizComponents';
-import { TeacherPanel } from './components/TeacherPanel';
 import { curriculumData } from './data/curriculum';
+
+// --- Lazy Load Components for Code Splitting ---
+const GameScreen = lazy(() => import('./components/QuizComponents').then(module => ({ default: module.GameScreen })));
+const TeacherPanel = lazy(() => import('./components/TeacherPanel').then(module => ({ default: module.TeacherPanel })));
+
+// A fallback component to show while lazy components are loading
+const LoadingFallback = () => (
+    <div className="w-full h-full flex justify-center items-center">
+        <div className="text-xl text-white animate-pulse">Yükleniyor...</div>
+    </div>
+);
+
 
 // --- Subject Data ---
 interface Subject {
@@ -558,23 +568,27 @@ export default function App() {
                     </Screen>
                 );
             case 'game':
-                return questionsForGame.length > 0 ? (
-                    <Screen id="game-screen" isActive={true} className="justify-between">
-                        <GameScreen 
-                            questions={questionsForGame} 
-                            settings={gameSettings} 
-                            onGameEnd={handleGameEnd} 
-                            groupNames={groupNames}
-                            onQuestionAnswered={handleQuestionAnswered}
-                            subjectId={selectedSubject!.id}
-                        />
-                    </Screen>
-                ) : (
-                     <Screen id="no-questions" isActive={true}>
-                        <h2 className="text-2xl mb-4">Soru Bulunamadı</h2>
-                        <p className="mb-6">Seçtiğiniz kriterlere uygun, daha önce çözülmemiş soru bulunamadı.</p>
-                        <Button onClick={() => setScreen('game-mode')}>Geri Dön</Button>
-                    </Screen>
+                return (
+                    <Suspense fallback={<LoadingFallback />}>
+                        {questionsForGame.length > 0 ? (
+                            <Screen id="game-screen" isActive={true} className="justify-between">
+                                <GameScreen 
+                                    questions={questionsForGame} 
+                                    settings={gameSettings} 
+                                    onGameEnd={handleGameEnd} 
+                                    groupNames={groupNames}
+                                    onQuestionAnswered={handleQuestionAnswered}
+                                    subjectId={selectedSubject!.id}
+                                />
+                            </Screen>
+                        ) : (
+                             <Screen id="no-questions" isActive={true}>
+                                <h2 className="text-2xl mb-4">Soru Bulunamadı</h2>
+                                <p className="mb-6">Seçtiğiniz kriterlere uygun, daha önce çözülmemiş soru bulunamadı.</p>
+                                <Button onClick={() => setScreen('game-mode')}>Geri Dön</Button>
+                            </Screen>
+                        )}
+                    </Suspense>
                 );
             case 'end':
                 const { score, finalGroupScores, quizMode } = lastGameResult;
@@ -637,19 +651,21 @@ export default function App() {
                 }
                 return (
                     <Screen id="teacher-panel-screen" isActive={true} className="p-0 sm:p-0">
-                         <TeacherPanel 
-                            questions={questions} 
-                            setQuestions={setQuestions} 
-                            onSelectQuestion={handleSelectQuestion}
-                            onResetSolvedQuestions={resetSolvedQuestions}
-                            onClearAllData={handleClearAllData}
-                            selectedSubjectId={selectedSubject.id}
-                            documentLibrary={documentLibrary}
-                            setDocumentLibrary={setDocumentLibrary}
-                            generatedExams={generatedExams}
-                            setGeneratedExams={setGeneratedExams}
-                            onBack={() => setScreen('start')}
-                         />
+                         <Suspense fallback={<LoadingFallback />}>
+                            <TeacherPanel 
+                                questions={questions} 
+                                setQuestions={setQuestions} 
+                                onSelectQuestion={handleSelectQuestion}
+                                onResetSolvedQuestions={resetSolvedQuestions}
+                                onClearAllData={handleClearAllData}
+                                selectedSubjectId={selectedSubject.id}
+                                documentLibrary={documentLibrary}
+                                setDocumentLibrary={setDocumentLibrary}
+                                generatedExams={generatedExams}
+                                setGeneratedExams={setGeneratedExams}
+                                onBack={() => setScreen('start')}
+                            />
+                         </Suspense>
                     </Screen>
                 );
             default:

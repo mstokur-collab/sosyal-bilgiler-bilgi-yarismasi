@@ -7,7 +7,9 @@ let ai: GoogleGenAI | null = null;
 
 const getAiClient = (): GoogleGenAI => {
     if (!ai) {
-        const apiKey = process.env.API_KEY;
+        // Vercel, client-side (tarayıcı) kodunun ortam değişkenlerine erişebilmesi için
+        // değişken adının 'VITE_' ile başlamasını gerektirir.
+        const apiKey = process.env.VITE_API_KEY;
         if (!apiKey) {
             // This error will be caught by the calling function's try/catch block
             // and displayed in the UI, which is better than a blank screen crash.

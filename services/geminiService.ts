@@ -3,13 +3,21 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, QuestionType } from "../types";
 import { promptTemplates } from '../data/promptTemplates';
 
-// According to guidelines, the API key must be obtained exclusively from the 
-// environment variable `process.env.API_KEY`. We assume this is pre-configured
-// in the deployment environment (e.g., Vercel settings).
-// The previous check `if (!process.env.API_KEY)` was causing the app to crash
-// on startup in browser environments where `process.env` is not populated by default.
-// The code now directly uses the environment variable as required by the guidelines.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let ai: GoogleGenAI | null = null;
+
+const getAiClient = (): GoogleGenAI => {
+    if (!ai) {
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) {
+            // This error will be caught by the calling function's try/catch block
+            // and displayed in the UI, which is better than a blank screen crash.
+            throw new Error("API Anahtarı bulunamadı. Lütfen Vercel projenizin ayarlarını kontrol edin.");
+        }
+        ai = new GoogleGenAI({ apiKey });
+    }
+    return ai;
+};
+
 const model = 'gemini-2.5-flash';
 
 const getQuestionSchema = (questionType: QuestionType) => {
@@ -74,12 +82,12 @@ export const generateQuestionWithAI = async (
     documentContent?: { mimeType: string; data: string },
     generationContext?: 'default' | 'pdf-topic'
 ): Promise<any[]> => {
-
+    const client = getAiClient();
     const customPromptTemplate = promptTemplates[kazanımId];
 
     // Use custom template only if it exists and matches some conditions (e.g., quiz with image)
     if (customPromptTemplate && questionType === 'quiz' && questionCount === 1) {
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model: model,
             contents: customPromptTemplate,
         });
@@ -168,7 +176,7 @@ JSON çıktısı dışında başka hiçbir metin ekleme.
         items: getQuestionSchema(questionType)
     };
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
         model: model,
         contents: { parts: parts },
         config: {
@@ -190,7 +198,8 @@ JSON çıktısı dışında başka hiçbir metin ekleme.
 export const generateImageForQuestion = async (prompt: string): Promise<string | null> => {
     if (!prompt) return null;
     try {
-        const response = await ai.models.generateImages({
+        const client = getAiClient();
+        const response = await client.models.generateImages({
             model: 'imagen-4.0-generate-001',
             prompt: prompt,
             config: {
@@ -211,6 +220,7 @@ export const generateImageForQuestion = async (prompt: string): Promise<string |
 };
 
 export const extractQuestionFromImage = async (image: { mimeType: string; data: string }): Promise<any[]> => {
+    const client = getAiClient();
     const prompt = `
 Bu görseldeki çoktan seçmeli soruyu analiz et. Soruyu, seçeneklerini, doğru cevabı ve cevabın kısa bir açıklamasını çıkar.
 Cevabını aşağıdaki JSON formatında bir dizi olarak ver. Görselde birden fazla soru varsa, her biri için bir JSON nesnesi oluştur.
@@ -250,7 +260,7 @@ Cevabını aşağıdaki JSON formatında bir dizi olarak ver. Görselde birden f
         }
     };
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
         model: model,
         contents: { parts: [imagePart, textPart] },
         config: {
@@ -269,6 +279,7 @@ Cevabını aşağıdaki JSON formatında bir dizi olarak ver. Görselde birden f
 };
 
 export const extractTopicsFromPDF = async (pdf: { mimeType: string; data: string }): Promise<string[]> => {
+    const client = getAiClient();
     const prompt = `
 Bu PDF dökümanının içeriğini analiz et ve içindeki ana konuları veya bölümleri başlıklar halinde listele. 
 Bu başlıklar, daha sonra bu konulardan soru üretmek için kullanılacak. 
@@ -291,7 +302,7 @@ Cevabını, sadece konu başlıklarını içeren bir JSON dizisi (string array) 
         items: { type: Type.STRING }
     };
     
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
         model: model,
         contents: { parts: [pdfPart, textPart] },
         config: {
@@ -310,6 +321,7 @@ Cevabını, sadece konu başlıklarını içeren bir JSON dizisi (string array) 
 };
 
 export const generateExamFromReference = async (document: { mimeType: string; data: string }): Promise<string> => {
+    const client = getAiClient();
     const prompt = `
 Sen deneyimli bir öğretmen ve sınav hazırlama uzmanısın.
 Sana base64 formatında verilen referans sınav dökümanını (PDF veya düz metin olabilir) analiz et.
@@ -335,7 +347,7 @@ Bu referans dökümanın formatını, soru tiplerini, konu dağılımını ve zo
         text: prompt
     };
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: { parts: [docPart, textPart] },
     });
@@ -344,6 +356,7 @@ Bu referans dökümanın formatını, soru tiplerini, konu dağılımını ve zo
 };
 
 export const generatePromptTemplateForKazanım = async (kazanımId: string, kazanımText: string): Promise<string> => {
+    const client = getAiClient();
     const prompt = `
 Sen, Gemini gibi üretken yapay zeka modelleri için "prompt mühendisi" olarak çalışan bir uzmansın.
 Görevin, sana verilen bir eğitim kazanımı için, yapay zekanın görsel destekli ve yüksek kaliteli sorular üretmesini sağlayacak bir "prompt şablonu" oluşturmak.
@@ -367,7 +380,7 @@ Aşağıdaki kazanım için bu prompt şablonunu oluştur:
 Çıktın, doğrudan bir JavaScript/TypeScript dosyasındaki "promptTemplates" nesnesine eklenebilecek formatta olmalı. Yani, bir anahtar-değer çifti şeklinde olmalı: \`'${kazanımId}': \`...\`\`. Şablon metni, backtick (\`) karakterleri içinde yer almalı.
 `;
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
     });

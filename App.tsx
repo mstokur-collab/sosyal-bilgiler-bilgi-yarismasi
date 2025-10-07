@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // FIX: Imported 'CompetitionMode' type to resolve a 'Cannot find name' error on line 77.
-import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode } from './types';
+import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode, DocumentLibraryItem } from './types';
 import { Screen, Button, BackButton, DeveloperSignature } from './components/UI';
 import { GameScreen } from './components/QuizComponents';
 import { TeacherPanel } from './components/TeacherPanel';
@@ -63,6 +63,7 @@ export default function App() {
     const [lastGameResult, setLastGameResult] = useState<{score: number; finalGroupScores?: {grup1: number, grup2: number}; quizMode?: QuizMode}>({score: 0});
     const [questionsForGame, setQuestionsForGame] = useState<Question[]>([]);
     const [solvedQuestionIds, setSolvedQuestionIds] = usePersistentState<number[]>('solvedQuestionIds', []);
+    const [documentLibrary, setDocumentLibrary] = usePersistentState<DocumentLibraryItem[]>('documentLibrary', []);
     
     useEffect(() => {
         document.body.className = 'theme-dark';
@@ -633,7 +634,6 @@ export default function App() {
                 }
                 return (
                     <Screen id="teacher-panel-screen" isActive={true} className="p-0 sm:p-0">
-                         <BackButton onClick={() => setScreen('start')} />
                          <TeacherPanel 
                             questions={questions} 
                             setQuestions={setQuestions} 
@@ -641,6 +641,9 @@ export default function App() {
                             onResetSolvedQuestions={resetSolvedQuestions}
                             onClearAllData={handleClearAllData}
                             selectedSubjectId={selectedSubject.id}
+                            documentLibrary={documentLibrary}
+                            setDocumentLibrary={setDocumentLibrary}
+                            onBack={() => setScreen('start')}
                          />
                     </Screen>
                 );

@@ -73,3 +73,10 @@ export interface HighScore {
   date: string;
   settings: GameSettings;
 }
+
+export type DocumentLibraryItem = {
+  id: string;
+  name: string;
+  content: { mimeType: string; data: string };
+  topics: string[];
+};

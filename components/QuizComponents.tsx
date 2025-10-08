@@ -259,6 +259,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const [jokers, setJokers] = useState({ fiftyFifty: true, addTime: true, skip: true });
     const [jokerEffects, setJokerEffects] = useState<Record<number, { disabledOptions: string[] }>>({});
     const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+    const [isSpeechEnabled, setIsSpeechEnabled] = useState(false);
+    const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
     const audioCtxRef = useRef<AudioContext | null>(null);
     const isGroupMode = settings.competitionMode === 'grup';
@@ -268,6 +270,20 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         return totalAnswers % 2 === 0 ? 'grup1' : 'grup2';
     }, [isGroupMode, answers]);
     
+    useEffect(() => {
+      const loadVoices = () => {
+        voicesRef.current = window.speechSynthesis.getVoices();
+      };
+      
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+      loadVoices();
+
+      return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+        window.speechSynthesis.cancel();
+      };
+    }, []);
+
     useEffect(() => {
         // Shuffle questions for all modes except classic for variety
         if (quizMode !== 'klasik') {
@@ -322,6 +338,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const { grup1: grup1Name = 'Grup 1', grup2: grup2Name = 'Grup 2' } = groupNames || {};
     
     const finishGame = useCallback(() => {
+        window.speechSynthesis.cancel();
         let finalScore = 0;
         if (quizMode === 'zamana-karsi') {
             // FIX: Explicitly type 'a' as AnswerState to resolve 'isCorrect does not exist on unknown' error.
@@ -431,6 +448,87 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         }
     }, [answers, currentQuestionIndex, quizMode, timeLeft, isGroupMode, activeGroup, playSound, finishGame, isAnswered, onQuestionAnswered, currentQuestion]);
 
+    const speakQuestionFlow = useCallback(() => {
+        if (!isSpeechEnabled || !currentQuestion) return;
+
+        window.speechSynthesis.cancel();
+
+        const partsToRead: string[] = [];
+
+        switch (currentQuestion.type) {
+            case 'quiz': {
+                const quizQ = currentQuestion as QuizQuestion;
+                partsToRead.push(questionText || quizQ.question);
+                optionsToShow.forEach(option => {
+                    partsToRead.push(option);
+                });
+                break;
+            }
+            case 'fill-in': {
+                const fillInQ = currentQuestion as FillInQuestion;
+                const sentenceParts = fillInQ.sentence.split('___');
+                partsToRead.push(sentenceParts[0]);
+                partsToRead.push("boşluk");
+                if (sentenceParts[1]) partsToRead.push(sentenceParts[1]);
+                partsToRead.push("Seçenekler şunlar:");
+                optionsToShow.forEach(option => partsToRead.push(option));
+                break;
+            }
+            case 'matching': {
+                const matchingQ = currentQuestion as MatchingQuestion;
+                partsToRead.push(matchingQ.question || "Aşağıdaki ifadeleri doğru şekilde eşleştirin.");
+                break;
+            }
+        }
+
+        if (partsToRead.length === 0) return;
+
+        let partIndex = 0;
+        const speakNextPart = () => {
+            if (!isSpeechEnabled || partIndex >= partsToRead.length) return;
+            
+            const textToSpeak = partsToRead[partIndex];
+            partIndex++;
+            
+            const utterance = new SpeechSynthesisUtterance(textToSpeak);
+            
+            // Smarter voice selection logic
+            const turkishVoices = voicesRef.current.filter(voice => voice.lang === 'tr-TR');
+            
+            // Prioritize known high-quality voices
+            const findVoice = (keyword: string) => 
+                turkishVoices.find(v => v.name.toLowerCase().includes(keyword));
+
+            const yeldaVoice = findVoice('yelda'); // Apple
+            const googleVoice = findVoice('google'); // Google/Android
+            const aylinVoice = findVoice('aylin'); // Microsoft
+            
+            // Select the best available voice in order of priority
+            utterance.voice = aylinVoice || yeldaVoice || googleVoice || turkishVoices[0] || null;
+            utterance.rate = 0.9;
+            utterance.pitch = 1.0;
+            
+            utterance.onend = () => {
+                setTimeout(speakNextPart, 350);
+            };
+            
+            window.speechSynthesis.speak(utterance);
+        };
+
+        speakNextPart();
+
+    }, [isSpeechEnabled, currentQuestion, optionsToShow, questionText]);
+
+    const toggleSpeech = useCallback(() => {
+        setIsSpeechEnabled(prev => {
+            const isNowEnabled = !prev;
+            if (!isNowEnabled) {
+                window.speechSynthesis.cancel();
+            }
+            return isNowEnabled;
+        });
+    }, []);
+
 
     // Timers Effect
     useEffect(() => {
@@ -484,6 +582,15 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         }
     }, [currentQuestionIndex, currentQuestion?.type, quizMode, streak, subjectId]);
     
+    useEffect(() => {
+        if (isSpeechEnabled) {
+            const timerId = setTimeout(() => speakQuestionFlow(), 600);
+            return () => clearTimeout(timerId);
+        } else {
+            window.speechSynthesis.cancel();
+        }
+    }, [currentQuestionIndex, isSpeechEnabled, speakQuestionFlow]);
+
     const handlePrev = () => { if (currentQuestionIndex > 0) setCurrentQuestionIndex(prev => prev - 1); };
     
     const useFiftyFifty = () => {
@@ -543,7 +650,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                     <>
                         {quizQuestion.imageUrl && (
                             <img 
-                                src={quizQuestion.imageUrl} 
+                                src={`data:image/png;base64,${quizQuestion.imageUrl}`} 
                                 alt="Soru görseli (büyütmek için tıklayın)" 
                                 className="max-h-52 w-auto mx-auto rounded-lg mb-2 object-contain cursor-pointer transition-transform hover:scale-105"
                                 onClick={() => setLightboxImageUrl(quizQuestion.imageUrl)}
@@ -682,6 +789,14 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                     )}
                     <button className="joker-btn" onClick={useSkip} disabled={!jokers.skip || (quizMode === 'hayatta-kalma' && isAnswered)}>Atla</button>
                     <button className="joker-btn" onClick={useAddTime} disabled={!jokers.addTime || jokerDisabled}>+15sn</button>
+                    <button 
+                        onClick={toggleSpeech}
+                        className={`joker-btn text-lg ${isSpeechEnabled ? 'bg-green-500/60 border-green-400' : ''}`}
+                        aria-label={isSpeechEnabled ? "Sesli okumayı kapat" : "Sesli okumayı aç"}
+                        title={isSpeechEnabled ? "Sesli okumayı kapat" : "Sesli okumayı aç"}
+                    >
+                        🔊
+                    </button>
                 </div>
                 {quizMode === 'hayatta-kalma' ? (
                      <div className="score">Seri: <span>{streak}</span></div>
@@ -709,7 +824,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                     onClick={() => setLightboxImageUrl(null)}
                 >
                     <img 
-                        src={lightboxImageUrl} 
+                        src={`data:image/png;base64,${lightboxImageUrl}`} 
                         alt="Soru görseli - büyütülmüş" 
                         className="max-w-full max-h-full object-contain cursor-default rounded-lg shadow-2xl" 
                         onClick={(e) => e.stopPropagation()} 

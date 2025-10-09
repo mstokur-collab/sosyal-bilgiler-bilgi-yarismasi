@@ -14,7 +14,7 @@ const MASTER_TIME_DEFAULT = 120; // 2 minutes for timed challenge
 interface AnswerState {
   selected: any;
   isCorrect: boolean;
-  shuffledOptions?: string[];
+  displayedOptions?: string[];
 }
 
 // --- Dynamic Font Sizing Hook ---
@@ -260,6 +260,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const [jokerEffects, setJokerEffects] = useState<Record<number, { disabledOptions: string[] }>>({});
     const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
     const [isSpeechEnabled, setIsSpeechEnabled] = useState(false);
+    const [isTimerActive, setIsTimerActive] = useState(false);
     const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -364,11 +365,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     }, [currentQuestionIndex, totalQuestions, finishGame, quizMode]);
 
     const optionsToShow = useMemo(() => {
-        if (currentAnswerState?.shuffledOptions) return currentAnswerState.shuffledOptions;
+        if (currentAnswerState?.displayedOptions) return currentAnswerState.displayedOptions;
         if (!currentQuestion) return [];
         
         if (currentQuestion.type === 'quiz') {
-            return [...currentQuestion.options].sort(() => Math.random() - 0.5);
+            return [...currentQuestion.options].sort();
         }
         if (currentQuestion.type === 'fill-in') {
             return [currentQuestion.answer, ...currentQuestion.distractors].sort(() => Math.random() - 0.5);
@@ -414,28 +415,30 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         oscillator.stop(audioCtx.currentTime + 0.5);
     }, []);
 
-    const handleAnswer = useCallback((isCorrect: boolean, selected: any, shuffledOptions?: string[]) => {
-        // In timed mode, allow changing answer. In others, only answer once.
+    const handleAnswer = useCallback((isCorrect: boolean, selected: any) => {
         if (isAnswered && quizMode !== 'zamana-karsi') return;
 
-        if (!isAnswered) {
+        if (!answers[currentQuestionIndex]) {
             onQuestionAnswered(currentQuestion.id);
         }
 
         playSound(isCorrect ? 'correct' : 'incorrect');
-        setAnswers(prev => ({ ...prev, [currentQuestionIndex]: { selected, isCorrect, shuffledOptions } }));
+        
+        const displayedOptions = optionsToShow;
+
+        setAnswers(prev => ({ ...prev, [currentQuestionIndex]: { selected, isCorrect, displayedOptions } }));
 
         if (quizMode === 'hayatta-kalma') {
             if (isCorrect) {
-                // Only update streak if it's the first time answering this question correctly
-                if (!isAnswered) setStreak(prev => prev + 1);
+                if (!answers[currentQuestionIndex]) setStreak(prev => prev + 1);
+                setTimeout(goToNextQuestion, 1500); // Auto-advance on correct answer
             } else {
-                setTimeout(finishGame, 1000); // Game over
+                setTimeout(finishGame, 1500); // Game over after showing result
             }
         } else if (quizMode === 'zamana-karsi') {
-            // Score is calculated at the end. Just record the answer.
+            // No auto-advance, user controls navigation
         } else { // Klasik mod
-            if (!isAnswered) { // Only award points once
+            if (!answers[currentQuestionIndex]) { // Only award points once
                 if (isCorrect) {
                     const points = 10 + Math.floor(timeLeft / 2);
                     if (isGroupMode) {
@@ -445,11 +448,15 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                     }
                 }
             }
+            // Auto-advance REMOVED. User must click 'Next'.
         }
-    }, [answers, currentQuestionIndex, quizMode, timeLeft, isGroupMode, activeGroup, playSound, finishGame, isAnswered, onQuestionAnswered, currentQuestion]);
+    }, [answers, currentQuestionIndex, quizMode, isGroupMode, activeGroup, playSound, finishGame, onQuestionAnswered, currentQuestion, optionsToShow, streak, timeLeft, goToNextQuestion, score, groupScores]);
 
-    const speakQuestionFlow = useCallback(() => {
-        if (!isSpeechEnabled || !currentQuestion) return;
+    const speakQuestionFlow = useCallback((onEndCallback?: () => void) => {
+        if (!isSpeechEnabled || !currentQuestion) {
+            onEndCallback?.();
+            return;
+        }
 
         window.speechSynthesis.cancel();
 
@@ -459,8 +466,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
             case 'quiz': {
                 const quizQ = currentQuestion as QuizQuestion;
                 partsToRead.push(questionText || quizQ.question);
-                optionsToShow.forEach(option => {
-                    partsToRead.push(option);
+                optionsToShow.forEach((option, index) => {
+                    const letter = String.fromCharCode(65 + index);
+                    partsToRead.push(`${letter} şıkkı. ${option}`);
                 });
                 break;
             }
@@ -481,29 +489,29 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
             }
         }
 
-        if (partsToRead.length === 0) return;
+        if (partsToRead.length === 0) {
+            onEndCallback?.();
+            return;
+        }
 
         let partIndex = 0;
         const speakNextPart = () => {
-            if (!isSpeechEnabled || partIndex >= partsToRead.length) return;
+            if (!isSpeechEnabled || partIndex >= partsToRead.length) {
+                if(isSpeechEnabled) onEndCallback?.(); // only call if speech was enabled through the process
+                return;
+            }
             
             const textToSpeak = partsToRead[partIndex];
             partIndex++;
             
             const utterance = new SpeechSynthesisUtterance(textToSpeak);
             
-            // Smarter voice selection logic
             const turkishVoices = voicesRef.current.filter(voice => voice.lang === 'tr-TR');
+            const findVoice = (keyword: string) => turkishVoices.find(v => v.name.toLowerCase().includes(keyword));
+            const aylinVoice = findVoice('aylin');
+            const yeldaVoice = findVoice('yelda');
+            const googleVoice = findVoice('google');
             
-            // Prioritize known high-quality voices
-            const findVoice = (keyword: string) => 
-                turkishVoices.find(v => v.name.toLowerCase().includes(keyword));
-
-            const yeldaVoice = findVoice('yelda'); // Apple
-            const googleVoice = findVoice('google'); // Google/Android
-            const aylinVoice = findVoice('aylin'); // Microsoft
-            
-            // Select the best available voice in order of priority
             utterance.voice = aylinVoice || yeldaVoice || googleVoice || turkishVoices[0] || null;
             utterance.rate = 0.9;
             utterance.pitch = 1.0;
@@ -524,36 +532,42 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
             const isNowEnabled = !prev;
             if (!isNowEnabled) {
                 window.speechSynthesis.cancel();
+                // If timer was paused waiting for speech, start it.
+                if (!isTimerActive && !isAnswered) {
+                    setIsTimerActive(true);
+                }
             }
             return isNowEnabled;
         });
-    }, []);
+    }, [isTimerActive, isAnswered]);
 
 
     // Timers Effect
     useEffect(() => {
+        if (isAnswered || totalQuestions === 0 || !isTimerActive) return;
+
         if (quizMode === 'zamana-karsi') {
-            if (masterTimeLeft > 0 && totalQuestions > 0) {
+            if (masterTimeLeft > 0) {
                 const timer = setTimeout(() => setMasterTimeLeft(prev => prev - 1), 1000);
                 if (masterTimeLeft <= 10) playSound('tick');
                 return () => clearTimeout(timer);
-            } else if (totalQuestions > 0) {
+            } else {
                 finishGame();
             }
         } else { // Klasik and Hayatta Kalma
-            if (isAnswered || totalQuestions === 0) return;
             if (timeLeft > 0) {
                 const timer = setTimeout(() => setTimeLeft(prev => prev - 1), 1000);
                 if (timeLeft <= 10) playSound('tick');
                 return () => clearTimeout(timer);
             } else {
-                handleAnswer(false, { timedOut: true }, optionsToShow);
+                handleAnswer(false, { timedOut: true });
             }
         }
-    }, [timeLeft, masterTimeLeft, isAnswered, playSound, handleAnswer, quizMode, finishGame, totalQuestions, optionsToShow]);
+    }, [timeLeft, masterTimeLeft, isAnswered, playSound, handleAnswer, quizMode, finishGame, totalQuestions, isTimerActive]);
 
     // Question Change Effect
     useEffect(() => {
+        setIsTimerActive(false); // Pause timer for new question
         if (quizMode === 'klasik' || quizMode === 'hayatta-kalma') {
             let time;
 
@@ -561,35 +575,36 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                 time = QUESTION_TIME_PARAGRAPH;
             } else {
                 switch(currentQuestion?.type) {
-                    case 'quiz':
-                        time = QUESTION_TIME_QUIZ;
-                        break;
-                    case 'fill-in':
-                        time = QUESTION_TIME_FILL_IN;
-                        break;
-                    case 'matching':
-                        time = QUESTION_TIME_MATCHING;
-                        break;
-                    default:
-                        time = QUESTION_TIME_QUIZ; // Default to quiz time
+                    case 'quiz': time = QUESTION_TIME_QUIZ; break;
+                    case 'fill-in': time = QUESTION_TIME_FILL_IN; break;
+                    case 'matching': time = QUESTION_TIME_MATCHING; break;
+                    default: time = QUESTION_TIME_QUIZ;
                 }
             }
             
             if (quizMode === 'hayatta-kalma') {
-                time = Math.max(10, time - streak); // Gets harder as you go
+                time = Math.max(10, time - streak);
             }
             setTimeLeft(time);
         }
     }, [currentQuestionIndex, currentQuestion?.type, quizMode, streak, subjectId]);
     
+    // Speech and Timer Activation Effect
     useEffect(() => {
+        const startTimer = () => {
+            if (!isAnswered) {
+                setIsTimerActive(true);
+            }
+        };
+
         if (isSpeechEnabled) {
-            const timerId = setTimeout(() => speakQuestionFlow(), 600);
+            // Set a short delay to allow the new question to render before speaking
+            const timerId = setTimeout(() => speakQuestionFlow(startTimer), 500);
             return () => clearTimeout(timerId);
         } else {
-            window.speechSynthesis.cancel();
+            startTimer();
         }
-    }, [currentQuestionIndex, isSpeechEnabled, speakQuestionFlow]);
+    }, [currentQuestionIndex, isSpeechEnabled, isAnswered, speakQuestionFlow]);
 
     const handlePrev = () => { if (currentQuestionIndex > 0) setCurrentQuestionIndex(prev => prev - 1); };
     
@@ -634,16 +649,36 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                 
                 const selectAnswer = (option: string) => {
                     if (isAnswered && quizMode !== 'zamana-karsi') return;
-                    handleAnswer(option === quizQuestion.answer, option, optionsToShow);
+                    // Robust comparison by trimming whitespace
+                    const isCorrect = option.trim() === quizQuestion.answer.trim();
+                    handleAnswer(isCorrect, option);
                 };
                 
-                const getOptionClass = (option: string) => {
+                const getOptionClass = (option: string): string => {
                     if (!isAnswered) {
                         return disabledByJokerOptions.includes(option) ? 'hidden-by-joker' : '';
                     }
-                    if (option === quizQuestion.answer) return 'correct';
-                    if (option === currentAnswerState.selected) return 'incorrect';
-                    return 'opacity-50';
+                
+                    const correctAnswer = (quizQuestion as QuizQuestion).answer.trim();
+                    const selectedAnswerRaw = currentAnswerState.selected;
+                    // Handle both timed out object and selected string answer
+                    const selectedAnswer = typeof selectedAnswerRaw === 'string' ? selectedAnswerRaw.trim() : null;
+                    const isTimedOut = typeof selectedAnswerRaw === 'object' && selectedAnswerRaw?.timedOut;
+                    const normalizedOption = option.trim();
+                
+                    if (isTimedOut) {
+                        return normalizedOption === correctAnswer ? 'correct' : 'opacity-50';
+                    }
+                    
+                    // For user-answered questions
+                    if (normalizedOption === correctAnswer) {
+                        return 'correct'; // Always highlight the correct answer
+                    }
+                    if (normalizedOption === selectedAnswer) {
+                        return 'incorrect'; // Highlight the user's wrong choice
+                    }
+                    
+                    return 'opacity-50'; // Fade out other incorrect options
                 };
 
                 return (
@@ -667,9 +702,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                             </div>
                         )}
                         <div className="answer-options">
-                            {optionsToShow.map((option) => (
+                            {optionsToShow.map((option, index) => (
                                 <button key={option} onClick={() => selectAnswer(option)} disabled={(isAnswered && quizMode !== 'zamana-karsi') || disabledByJokerOptions.includes(option)} className={`option ${getOptionClass(option)}`}>
-                                    {option}
+                                    <span className="font-bold mr-2">{`${String.fromCharCode(65 + index)})`}</span>
+                                    <span>{option}</span>
                                 </button>
                             ))}
                         </div>
@@ -696,7 +732,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
 
                 const selectAnswer = (option: string) => {
                     if (isAnswered && quizMode !== 'zamana-karsi') return;
-                    handleAnswer(option === fillInQuestion.answer, option, optionsToShow);
+                    handleAnswer(option === fillInQuestion.answer, option);
                 };
 
                 const getOptionClass = (option: string) => {
@@ -753,13 +789,15 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         return `${mins}:${secs}`;
     }
 
-    const prevDisabled = currentQuestionIndex === 0 || quizMode === 'hayatta-kalma';
+    const prevDisabled = currentQuestionIndex === 0 || quizMode === 'hayatta-kalma' || (isAnswered && quizMode !== 'zamana-karsi');
     const nextDisabled = useMemo(() => {
         if (currentQuestionIndex >= totalQuestions - 1) return true;
         if (quizMode === 'hayatta-kalma') {
+            // Disable if answered incorrectly or not answered yet
             return !isAnswered || !currentAnswerState.isCorrect;
         }
         if (quizMode === 'klasik') {
+            // Disable until answered. Enable after answering to allow manual advance.
             return !isAnswered;
         }
         return false; // Free navigation for timed mode

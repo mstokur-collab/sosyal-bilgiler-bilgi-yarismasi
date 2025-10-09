@@ -34,7 +34,7 @@ interface TeacherPanelProps {
 const TabButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
   <button
     onClick={onClick}
-    className={`px-3 py-2 text-xs sm:px-4 sm:text-sm font-semibold rounded-md transition-colors duration-200 flex-shrink-0 ${
+    className={`px-3 py-2 text-xs sm:px-4 sm:text-sm font-semibold rounded-md transition-colors duration-200 flex-shrink-0 flex items-center gap-1 ${
       active ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
     }`}
   >
@@ -153,6 +153,7 @@ const QuestionGenerator: React.FC<{
                     type: questionType,
                     imageUrl: imageUrl,
                     kazanımId: kazanımId, // Ensure kazanımId from the form is used
+                    subjectId: selectedSubjectId,
                 };
                 
                 // This is a type guard for narrowing
@@ -313,7 +314,8 @@ const DocumentManager: React.FC<{
     documentLibrary: DocumentLibraryItem[];
     setDocumentLibrary: React.Dispatch<React.SetStateAction<DocumentLibraryItem[]>>;
     setQuestions: React.Dispatch<React.SetStateAction<Question[]>>;
-}> = ({ documentLibrary, setDocumentLibrary, setQuestions }) => {
+    selectedSubjectId: string;
+}> = ({ documentLibrary, setDocumentLibrary, setQuestions, selectedSubjectId }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -338,6 +340,7 @@ const DocumentManager: React.FC<{
                     topic: 'Görselden Aktarılan',
                     type: 'quiz',
                     kazanımId: 'N/A',
+                    subjectId: selectedSubjectId,
                 } as QuizQuestion));
                 setQuestions(prev => [...newQuestions, ...prev]);
 
@@ -659,6 +662,32 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   onBack,
 }) => {
   const [activeTab, setActiveTab] = useState<'generate' | 'exam-generator' | 'library' | 'import' | 'tools'>('generate');
+  
+  const subjectPrefixes: Record<string, string[]> = {
+    'social-studies': ['SB.', 'İTA.'],
+    'math': ['MAT.', 'M.'],
+    'science': ['FEN.', 'F.'],
+    'turkish': ['T.'],
+    'english': ['E'],
+    'paragraph': ['P.'],
+  };
+
+  const subjectQuestions = useMemo(() => {
+    const prefixes = subjectPrefixes[selectedSubjectId] || [];
+    return questions.filter(q => {
+        // New questions have subjectId, which is the most reliable filter
+        if (q.subjectId) {
+            return q.subjectId === selectedSubjectId;
+        }
+        // Fallback for older data without subjectId, infer from kazanımId prefix
+        if (q.kazanımId) {
+            return prefixes.some(prefix => q.kazanımId.startsWith(prefix));
+        }
+        // Questions from old image imports without a kazanımId or subjectId won't be shown
+        return false;
+    });
+  }, [questions, selectedSubjectId]);
+
 
   const renderContent = () => {
     switch (activeTab) {
@@ -667,9 +696,9 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
       case 'exam-generator':
         return <ExamGenerator generatedExams={generatedExams} setGeneratedExams={setGeneratedExams} />;
       case 'library':
-        return <QuestionLibrary questions={questions} setQuestions={setQuestions} onSelectQuestion={onSelectQuestion} />;
+        return <QuestionLibrary questions={subjectQuestions} setQuestions={setQuestions} onSelectQuestion={onSelectQuestion} />;
       case 'import':
-        return <DocumentManager documentLibrary={documentLibrary} setDocumentLibrary={setDocumentLibrary} setQuestions={setQuestions} />;
+        return <DocumentManager documentLibrary={documentLibrary} setDocumentLibrary={setDocumentLibrary} setQuestions={setQuestions} selectedSubjectId={selectedSubjectId} />;
       case 'tools':
         return <Tools onResetSolvedQuestions={onResetSolvedQuestions} onClearAllData={onClearAllData} selectedSubjectId={selectedSubjectId} />;
       default:
@@ -689,11 +718,15 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
             </button>
           </div>
           <h2 className="flex-shrink-0 text-xl sm:text-2xl font-bold text-center text-slate-200 px-4">Öğretmen Paneli</h2>
-          <div className="flex-1 flex justify-end items-center gap-1 sm:gap-2">
+          <div className="flex-1 flex justify-end items-center gap-1 sm:gap-2 flex-wrap">
             <TabButton active={activeTab === 'generate'} onClick={() => setActiveTab('generate')}>AI ile Soru Üret</TabButton>
             <TabButton active={activeTab === 'exam-generator'} onClick={() => setActiveTab('exam-generator')}>✍️ Yazılı Oluştur</TabButton>
-            <TabButton active={activeTab === 'library'} onClick={() => setActiveTab('library')}>Soru Bankası</TabButton>
-            <TabButton active={activeTab === 'import'} onClick={() => setActiveTab('import')}>Kaynak Kütüphanem</TabButton>
+            <TabButton active={activeTab === 'library'} onClick={() => setActiveTab('library')}>
+              Soru Bankası <span className="text-yellow-400 font-bold">({subjectQuestions.length})</span>
+            </TabButton>
+            <TabButton active={activeTab === 'import'} onClick={() => setActiveTab('import')}>
+              Kaynak Kütüphanem <span className="text-yellow-400 font-bold">({documentLibrary.length})</span>
+            </TabButton>
             <TabButton active={activeTab === 'tools'} onClick={() => setActiveTab('tools')}>Araçlar</TabButton>
           </div>
       </header>

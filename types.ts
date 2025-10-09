@@ -26,6 +26,7 @@ export interface BaseQuestion {
   difficulty: Difficulty;
   imageUrl?: string;
   kazanımId?: string;
+  subjectId: string;
 }
 
 export interface QuizQuestion extends BaseQuestion {

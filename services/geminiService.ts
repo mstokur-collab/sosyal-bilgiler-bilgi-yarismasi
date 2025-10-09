@@ -79,7 +79,7 @@ export const generateQuestionWithAI = async (
     const customPromptTemplate = promptTemplates[kazanımId];
 
     // Use custom template only if it exists and matches some conditions (e.g., quiz with image)
-    if (customPromptTemplate && questionType === 'quiz' && questionCount === 1) {
+    if (customPromptTemplate && questionType === 'quiz' && questionCount === 1 && shouldGenerateImage) {
         const response = await ai.models.generateContent({
             model: model,
             contents: customPromptTemplate,
@@ -125,9 +125,10 @@ export const generateQuestionWithAI = async (
         paragraphInstruction = `Paragraf sorusu, özellikle şu beceriyi ölçmelidir: ${paragraphSkills[paragraphSkill] || paragraphSkill}. Paragraf ve soru metnini iki yeni satır (\\n\\n) ile ayır.`;
     }
 
-    const imageInstruction = shouldGenerateImage && questionType === 'quiz'
-        ? 'Soru, çözümü için bir görsele ihtiyaç duyuyorsa, bu görselin bir model tarafından üretilebilmesi için detaylı bir "visualPrompt" alanı oluştur. Görsel istemiyorsan bu alanı boş bırak.'
-        : '';
+    let imageInstruction = '';
+    if (shouldGenerateImage && questionType === 'quiz') {
+        imageInstruction = 'Eğer soru bir şekil, grafik, harita, tablo, deney düzeneği gibi bir görselden faydalanacaksa veya bir görselle daha anlaşılır hâle gelecekse, bu görseli bir resim üretme modelinin anlayabileceği şekilde detaylı olarak tarif eden bir "visualPrompt" alanı oluştur. Soru tamamen metin tabanlı ise ve görsele kesinlikle ihtiyaç duymuyorsa bu alanı boş bırak.';
+    }
         
     let qualityInstruction = '';
     if (questionType === 'quiz') {

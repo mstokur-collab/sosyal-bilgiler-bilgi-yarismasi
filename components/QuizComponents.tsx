@@ -649,8 +649,31 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                 
                 const selectAnswer = (option: string) => {
                     if (isAnswered && quizMode !== 'zamana-karsi') return;
-                    // Robust comparison by trimming whitespace
-                    const isCorrect = option.trim() === quizQuestion.answer.trim();
+                    
+                    const checkIsCorrect = (selectedOption: string): boolean => {
+                        const correctAnswerText = quizQuestion.answer.trim();
+                        const normalizedSelectedOption = selectedOption.trim();
+                
+                        // 1. Direct text match (case-insensitive for robustness)
+                        if (normalizedSelectedOption.toLowerCase() === correctAnswerText.toLowerCase()) {
+                            return true;
+                        }
+                
+                        // 2. Fallback: Check if AI returned a letter ('A', 'B', 'C', 'D')
+                        // optionsToShow is the alphabetically sorted list of options displayed.
+                        const optionIndex = optionsToShow.findIndex(opt => opt.trim() === normalizedSelectedOption);
+                        
+                        if (optionIndex !== -1) {
+                            const expectedLetter = String.fromCharCode(65 + optionIndex); // A, B, C, D...
+                            if (correctAnswerText.toUpperCase() === expectedLetter) {
+                                return true;
+                            }
+                        }
+                        
+                        return false;
+                    };
+                
+                    const isCorrect = checkIsCorrect(option);
                     handleAnswer(isCorrect, option);
                 };
                 
@@ -659,22 +682,35 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                         return disabledByJokerOptions.includes(option) ? 'hidden-by-joker' : '';
                     }
                 
-                    const correctAnswer = (quizQuestion as QuizQuestion).answer.trim();
+                    const isActuallyCorrect = () => {
+                        const correctAnswerText = (quizQuestion as QuizQuestion).answer.trim();
+                        const normalizedOption = option.trim();
+                        
+                        // Check 1: Direct text match
+                        if (normalizedOption.toLowerCase() === correctAnswerText.toLowerCase()) return true;
+
+                        // Check 2: Letter match
+                        const optionIndex = optionsToShow.findIndex(opt => opt.trim() === normalizedOption);
+                        if (optionIndex !== -1) {
+                            const expectedLetter = String.fromCharCode(65 + optionIndex);
+                            if (correctAnswerText.toUpperCase() === expectedLetter) return true;
+                        }
+                        return false;
+                    };
+                    
                     const selectedAnswerRaw = currentAnswerState.selected;
-                    // Handle both timed out object and selected string answer
                     const selectedAnswer = typeof selectedAnswerRaw === 'string' ? selectedAnswerRaw.trim() : null;
                     const isTimedOut = typeof selectedAnswerRaw === 'object' && selectedAnswerRaw?.timedOut;
-                    const normalizedOption = option.trim();
                 
                     if (isTimedOut) {
-                        return normalizedOption === correctAnswer ? 'correct' : 'opacity-50';
+                        return isActuallyCorrect() ? 'correct' : 'opacity-50';
                     }
                     
                     // For user-answered questions
-                    if (normalizedOption === correctAnswer) {
-                        return 'correct'; // Always highlight the correct answer
+                    if (isActuallyCorrect()) {
+                        return 'correct'; // Always highlight the truly correct answer
                     }
-                    if (normalizedOption === selectedAnswer) {
+                    if (option.trim() === selectedAnswer) {
                         return 'incorrect'; // Highlight the user's wrong choice
                     }
                     

@@ -148,9 +148,13 @@ ${imageInstruction}
 ${qualityInstruction}
 
 Lütfen cevabını, istenen soru sayısı kadar eleman içeren bir JSON dizisi formatında ver. Her bir eleman, soru tipine uygun şemada olmalıdır.
-Örneğin çoktan seçmeli için: { "question": "...", "options": ["A", "B", "C", "D"], "answer": "A", "explanation": "...", "visualPrompt": "..." }
-Boşluk doldurma için: { "sentence": "...", "answer": "...", "distractors": ["...", "..."] }
-Eşleştirme için: { "question": "...", "pairs": [{ "term": "...", "definition": "..." }] }
+ÖNEMLİ KURAL: Çoktan seçmeli sorularda, "answer" alanı, "options" dizisindeki doğru seçeneğin metnini BİREBİR İÇERMELİDİR. Kesinlikle seçenek harfini (A, B, C, D gibi) KULLANMA.
+
+Örnekler:
+- Çoktan seçmeli: { "question": "Türkiye'nin başkenti neresidir?", "options": ["İstanbul", "Ankara", "İzmir", "Bursa"], "answer": "Ankara", "explanation": "...", "visualPrompt": "..." }
+- Boşluk doldurma: { "sentence": "Güneş Sistemi'ndeki en büyük gezegen ___'dir.", "answer": "Jüpiter", "distractors": ["Mars", "Satürn"] }
+- Eşleştirme: { "question": "...", "pairs": [{ "term": "...", "definition": "..." }] }
+
 JSON çıktısı dışında başka hiçbir metin ekleme.
 `;
     

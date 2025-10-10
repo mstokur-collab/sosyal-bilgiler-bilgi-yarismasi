@@ -40,9 +40,25 @@ function usePersistentState<T,>(key: string, defaultValue: T): [T, React.Dispatc
 
     useEffect(() => {
         try {
-            localStorage.setItem(key, JSON.stringify(state));
+            let dataToStore: any = state;
+
+            // Specific handling for 'quizQuestions' to prevent localStorage quota issues.
+            // We strip out the base64 image data before saving. This is the main cause
+            // of the quota exceeded error. Images will now only persist for the current session.
+            if (key === 'quizQuestions' && Array.isArray(state)) {
+                dataToStore = state.map(q => {
+                    const { imageUrl, ...rest } = q as Question & { imageUrl?: string };
+                    return rest;
+                });
+            }
+
+            localStorage.setItem(key, JSON.stringify(dataToStore));
         } catch (error) {
             console.error(`Error setting localStorage key “${key}”:`, error);
+            if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.code === 22)) {
+                // Providing a user-friendly alert and a suggestion.
+                alert(`Tarayıcı depolama alanı dolu! Uygulamanın tekrar düzgün çalışması için "Öğretmen Paneli > Araçlar" menüsündeki "Tüm Verileri Sil" seçeneğini kullanmanız gerekebilir. Hata: '${key}' anahtarı kaydedilemedi.`);
+            }
         }
     }, [key, state]);
 

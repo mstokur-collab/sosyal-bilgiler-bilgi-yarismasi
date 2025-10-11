@@ -213,10 +213,10 @@ export default function App() {
                                         setSelectedSubject(subject);
                                         setScreen('start');
                                     }}
-                                    className="flex flex-col items-center p-6 text-center bg-slate-800/40 border border-slate-700 rounded-2xl transition-all duration-300 hover:bg-slate-700/60 hover:border-indigo-400 hover:scale-105 cursor-pointer"
+                                    className="flex flex-col items-center p-6 text-center bg-green-400 border border-green-600 rounded-2xl transition-all duration-300 hover:bg-green-500 hover:border-green-700 hover:scale-105 cursor-pointer"
                                 >
                                     <div className="text-5xl sm:text-6xl mb-4">{subject.icon}</div>
-                                    <h3 className="text-xl sm:text-2xl font-bold text-white">{subject.name}</h3>
+                                    <h3 className="text-xl sm:text-2xl font-bold text-slate-800">{subject.name}</h3>
                                 </button>
                             ))}
                         </div>

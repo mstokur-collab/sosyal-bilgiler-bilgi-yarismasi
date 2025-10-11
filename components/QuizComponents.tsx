@@ -18,7 +18,7 @@ interface AnswerState {
 }
 
 // --- Dynamic Font Sizing Hook ---
-const useFitText = (text: string) => {
+const useFitText = (text: string, refitTrigger?: any) => {
     const textRef = useRef<HTMLDivElement>(null);
 
     const fitTextCallback = useCallback(() => {
@@ -60,7 +60,7 @@ const useFitText = (text: string) => {
         return () => {
             window.removeEventListener('resize', fitTextCallback);
         };
-    }, [text, fitTextCallback]); // Rerun the effect if the text content changes
+    }, [text, fitTextCallback, refitTrigger]); // Rerun the effect if the text content or the trigger changes
 
     return textRef;
 };
@@ -334,7 +334,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
 
     // This hook is now called unconditionally. For paragraph questions which don't need
     // text fitting, we pass an empty string to satisfy the rules of hooks.
-    const questionTextRef = useFitText(isParagraphQuestion ? '' : (questionText || ''));
+    const questionTextRef = useFitText(isParagraphQuestion ? '' : (questionText || ''), isAnswered);
 
     const { grup1: grup1Name = 'Grup 1', grup2: grup2Name = 'Grup 2' } = groupNames || {};
     
@@ -682,14 +682,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                         return disabledByJokerOptions.includes(option) ? 'hidden-by-joker' : '';
                     }
                 
-                    const isActuallyCorrect = () => {
-                        const correctAnswerText = (quizQuestion as QuizQuestion).answer.trim();
+                    const correctAnswerText = (quizQuestion as QuizQuestion).answer.trim();
+                    const isThisOptionTheCorrectAnswer = () => {
                         const normalizedOption = option.trim();
-                        
-                        // Check 1: Direct text match
                         if (normalizedOption.toLowerCase() === correctAnswerText.toLowerCase()) return true;
-
-                        // Check 2: Letter match
                         const optionIndex = optionsToShow.findIndex(opt => opt.trim() === normalizedOption);
                         if (optionIndex !== -1) {
                             const expectedLetter = String.fromCharCode(65 + optionIndex);
@@ -697,24 +693,26 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                         }
                         return false;
                     };
-                    
-                    const selectedAnswerRaw = currentAnswerState.selected;
-                    const selectedAnswer = typeof selectedAnswerRaw === 'string' ? selectedAnswerRaw.trim() : null;
-                    const isTimedOut = typeof selectedAnswerRaw === 'object' && selectedAnswerRaw?.timedOut;
+                
+                    const selectedAnswer = currentAnswerState.selected;
+                    const isTimedOut = typeof selectedAnswer === 'object' && selectedAnswer?.timedOut;
                 
                     if (isTimedOut) {
-                        return isActuallyCorrect() ? 'correct' : 'opacity-50';
+                        return isThisOptionTheCorrectAnswer() ? 'correct' : 'opacity-50';
                     }
-                    
-                    // For user-answered questions
-                    if (isActuallyCorrect()) {
-                        return 'correct'; // Always highlight the truly correct answer
+                
+                    // If the user picked this option, style it based on correctness
+                    if (option === selectedAnswer) {
+                        return currentAnswerState.isCorrect ? 'correct' : 'incorrect';
                     }
-                    if (option.trim() === selectedAnswer) {
-                        return 'incorrect'; // Highlight the user's wrong choice
+                
+                    // If this is the correct answer (and user picked something else), highlight it
+                    if (!currentAnswerState.isCorrect && isThisOptionTheCorrectAnswer()) {
+                        return 'correct';
                     }
-                    
-                    return 'opacity-50'; // Fade out other incorrect options
+                
+                    // Otherwise, it's an unselected, incorrect option
+                    return 'opacity-50';
                 };
 
                 return (

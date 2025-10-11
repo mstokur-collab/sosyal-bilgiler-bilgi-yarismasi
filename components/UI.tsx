@@ -24,7 +24,7 @@ export const Button: React.FC<ButtonProps> = ({ children, variant = 'primary', c
   const baseClasses = 'text-white border border-white/20 rounded-2xl px-8 py-4 text-xl sm:text-2xl font-semibold shadow-lg backdrop-blur-md transition-all duration-300 hover:scale-105 hover:shadow-2xl disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none';
   
   const variantClasses = {
-    primary: 'bg-indigo-600/90 hover:bg-indigo-500/90 shadow-indigo-500/40',
+    primary: 'bg-teal-600/90 hover:bg-teal-500/90 shadow-teal-500/40',
     secondary: 'bg-rose-500/80 hover:bg-rose-400/90 shadow-rose-500/30',
     success: 'bg-emerald-500/80 hover:bg-emerald-400/90 shadow-emerald-500/30',
     warning: 'bg-yellow-500/90 hover:bg-yellow-400/90 shadow-yellow-500/40 text-slate-900 font-bold',

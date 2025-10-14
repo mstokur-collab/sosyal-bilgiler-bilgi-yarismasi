@@ -263,6 +263,12 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const [isTimerActive, setIsTimerActive] = useState(false);
     const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
+    // Ref to get latest timeLeft in callbacks without re-creating them every second
+    const timeLeftRef = useRef(timeLeft);
+    useEffect(() => {
+        timeLeftRef.current = timeLeft;
+    }, [timeLeft]);
+
     const audioCtxRef = useRef<AudioContext | null>(null);
     const isGroupMode = settings.competitionMode === 'grup';
     const activeGroup = useMemo(() => {
@@ -440,7 +446,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         } else { // Klasik mod
             if (!answers[currentQuestionIndex]) { // Only award points once
                 if (isCorrect) {
-                    const points = 10 + Math.floor(timeLeft / 2);
+                    const points = 10 + Math.floor(timeLeftRef.current / 2);
                     if (isGroupMode) {
                         setGroupScores(prev => ({ ...prev, [activeGroup]: prev[activeGroup] + points }));
                     } else {
@@ -450,7 +456,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
             }
             // Auto-advance REMOVED. User must click 'Next'.
         }
-    }, [answers, currentQuestionIndex, quizMode, isGroupMode, activeGroup, playSound, finishGame, onQuestionAnswered, currentQuestion, optionsToShow, streak, timeLeft, goToNextQuestion, score, groupScores]);
+    }, [answers, currentQuestionIndex, quizMode, isGroupMode, activeGroup, playSound, finishGame, onQuestionAnswered, currentQuestion, optionsToShow, streak, goToNextQuestion, score, groupScores]);
 
     const speakQuestionFlow = useCallback((onEndCallback?: () => void) => {
         if (!isSpeechEnabled || !currentQuestion) {

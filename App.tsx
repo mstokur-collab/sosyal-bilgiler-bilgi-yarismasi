@@ -42,13 +42,20 @@ function usePersistentState<T,>(key: string, defaultValue: T): [T, React.Dispatc
         try {
             let dataToStore: any = state;
 
-            // Specific handling for 'quizQuestions' to prevent localStorage quota issues.
-            // We strip out the base64 image data before saving. This is the main cause
-            // of the quota exceeded error. Images will now only persist for the current session.
             if (key === 'quizQuestions' && Array.isArray(state)) {
                 dataToStore = state.map(q => {
                     const { imageUrl, ...rest } = q as Question & { imageUrl?: string };
                     return rest;
+                });
+            }
+            
+            if (key === 'documentLibrary' && Array.isArray(state)) {
+                dataToStore = state.map(doc => {
+                    const { content, ...rest } = doc as DocumentLibraryItem;
+                    return {
+                        ...rest,
+                        content: { mimeType: content.mimeType, data: '' }, 
+                    };
                 });
             }
 
@@ -56,7 +63,6 @@ function usePersistentState<T,>(key: string, defaultValue: T): [T, React.Dispatc
         } catch (error) {
             console.error(`Error setting localStorage key “${key}”:`, error);
             if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.code === 22)) {
-                // Providing a user-friendly alert and a suggestion.
                 alert(`Tarayıcı depolama alanı dolu! Uygulamanın tekrar düzgün çalışması için "Öğretmen Paneli > Araçlar" menüsündeki "Tüm Verileri Sil" seçeneğini kullanmanız gerekebilir. Hata: '${key}' anahtarı kaydedilemedi.`);
             }
         }
@@ -112,18 +118,18 @@ export default function App() {
     }, [setSolvedQuestionIds]);
     
     const handleClearAllData = useCallback(() => {
-        // Clear from localStorage
         localStorage.removeItem('quizQuestions');
         localStorage.removeItem('quizHighScores');
         localStorage.removeItem('solvedQuestionIds');
         localStorage.removeItem('generatedExams');
+        localStorage.removeItem('documentLibrary');
 
-        // Reset state to initial values to reflect changes in the UI immediately
         setQuestions(initialQuestions);
         setHighScores([]);
         setSolvedQuestionIds([]);
         setGeneratedExams([]);
-    }, [setQuestions, setHighScores, setSolvedQuestionIds, setGeneratedExams]);
+        setDocumentLibrary([]);
+    }, [setQuestions, setHighScores, setSolvedQuestionIds, setGeneratedExams, setDocumentLibrary]);
 
     const handleGameEnd = useCallback((score: number, finalGroupScores?: { grup1: number, grup2: number }) => {
         const finalScore = finalGroupScores ? Math.max(finalGroupScores.grup1, finalGroupScores.grup2) : score;
@@ -157,7 +163,6 @@ export default function App() {
       setGroupNames({ grup1: 'Grup 1', grup2: 'Grup 2' });
       setGameSettings({});
       setQuestionsForGame([]);
-      // FIX: Reset last game result to correctly determine back navigation from high scores.
       setLastGameResult({ score: 0 });
       setScreen('subject-select');
       setSelectedSubject(null);

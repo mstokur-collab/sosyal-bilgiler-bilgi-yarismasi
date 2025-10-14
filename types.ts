@@ -87,4 +87,6 @@ export interface Exam {
   name: string;
   content: string;
   createdAt: number;
+  feedback?: string;
+  answerKey?: string;
 }

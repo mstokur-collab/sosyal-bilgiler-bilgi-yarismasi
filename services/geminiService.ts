@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, QuestionType } from "../types";
 import { promptTemplates } from '../data/promptTemplates';
@@ -315,35 +314,139 @@ Cevabını, sadece konu başlıklarını içeren bir JSON dizisi (string array) 
     }
 };
 
-export const generateExamFromReference = async (document: { mimeType: string; data: string }): Promise<string> => {
+export const generateExamFromKazanims = async (
+    grade: number,
+    subjectName: string,
+    kazanimSelections: { id: string; text: string; count: number }[],
+    referenceExamDoc?: { mimeType: string; data: string },
+    sourceContentDocs?: { name: string; content: { mimeType: string; data: string } }[]
+): Promise<{ examContent: string, answerKeyContent: string }> => {
+    const kazanimsList = kazanimSelections.map(k =>
+        `- Kazanım: "${k.id} - ${k.text}" - İstenen Soru Sayısı: ${k.count}`
+    ).join('\n');
+
+    const totalQuestions = kazanimSelections.reduce((sum, k) => sum + k.count, 0);
+
     const prompt = `
-Sen deneyimli bir öğretmen ve sınav hazırlama uzmanısın.
-Sana base64 formatında verilen referans sınav dökümanını (PDF veya düz metin olabilir) analiz et.
-Bu referans dökümanın formatını, soru tiplerini, konu dağılımını ve zorluk seviyesini dikkate alarak, TAMAMEN YENİ VE ÖZGÜN SORULARLA benzer yapıda yeni bir sınav kağıdı hazırla.
+Sen ${grade}. sınıf ${subjectName} dersi için bir yazılı sınav kağıdı hazırlayan uzman bir öğretmensin.
+Görevin, sana verilen bilgilere göre tutarlı ve kaliteli bir sınav kağıdı oluşturmaktır.
 
-İstenenler:
-1.  **Başlık:** Sınava uygun bir başlık oluştur (Örn: "8. Sınıf Matematik Dersi 1. Dönem 2. Yazılı Sınavı").
-2.  **Puanlama:** Her sorunun yanına parantez içinde puan değerini belirt (Örn: "(10 Puan)"). Toplam puan 100 olmalıdır.
-3.  **Soru Tipleri:** Referans sınavdaki soru tiplerini (çoktan seçmeli, boşluk doldurma, doğru-yanlış, açık uçlu vb.) koru.
-4.  **İçerik:** Sorular tamamen özgün olmalı, referans dökümandaki soruların kopyası OLMAMALIDIR. Ancak aynı konu ve kazanımları hedeflemelidir.
-5.  **Format:** Cevabını temiz ve düzenli bir Markdown formatında oluştur. Başlıklar için '##', sorular için numaralandırma kullan.
+Aşağıdaki kurallara harfiyen uymalısın:
 
-Çıktın sadece Markdown metni olmalıdır.
+1.  **Kazanımlar:** Sınav, **SADECE** aşağıdaki listede belirtilen kazanımları ve soru sayılarını içermelidir:
+${kazanimsList}
+
+2.  **Bilgi Kaynağı:**
+${(sourceContentDocs && sourceContentDocs.length > 0) ?
+    "**KRİTİK KURAL:** Soruların içeriğini ve cevaplarını **KESİNLİKLE** sana verilen 'BİLGİ KAYNAĞI' dökümanlarından (ders kitabı üniteleri vb.) oluşturmalısın. İstenen kazanım hangi dökümandaysa, o dökümanı kullan. Dışarıdan bilgi kullanma." :
+    "Soruların içeriğini belirtilen kazanımlara uygun olarak genel müfredat bilgisiyle oluştur."}
+
+3.  **Stil ve Format Referansı:**
+${referenceExamDoc ?
+    `**ÇOK ÖNEMLİ STİL KURALI:** Sana bir 'STİL VE FORMAT REFERANSI' dökümanı (örnek yazılı) veriyorum. Bu dökümanın içeriğini veya sorularını **KESİNLİKLE KOPYALAMA**. Senin görevin, bu referans dökümanın sadece **YAPISINI, SORU ÇEŞİTLERİNİ (örn: boşluk doldurma, tablo sorusu vb.), FORMATINI ve TARZINI** analiz edip taklit etmektir. Örneğin, referans sınav 5. sınıf Sosyal Bilgiler, ama senden istenen 6. sınıf Fen Bilimleri ise, üreteceğin sınav, Fen Bilimleri konularını içermeli ama soru tipleri ve görünüşü itibarıyla Sosyal Bilgiler sınavına benzemelidir. İçerik ve konular için MUTLAKA 1. ve 2. kurallara uymalısın.` :
+    "Soru tiplerini çeşitlendir. Bilgiyi ölçen, net cevaplı sorulara odaklan (Kısa Cevap, Boşluk Doldurma, Tablo Doldurma, Eşleştirme, Doğru/Yanlış). 'Açıklayınız', 'Yorumlayınız' gibi uzun ve subjektif cevaplar gerektiren sorulardan kaçın. Çoktan seçmeli soru KULLANMA."}
+
+4.  **Genel Sınav Kuralları:**
+    - **Başlık:** Sınava uygun, resmi bir başlık oluştur.
+    - **Puanlama:** Her sorunun yanına parantez içinde bir puan değeri ekle. Toplam puan 100 olmalıdır. Puanları, ${totalQuestions} adet soruya mantıklı ve adil bir şekilde dağıt.
+    - **Cevap Anahtarı:** Sınavla birlikte, her sorunun doğru cevabını içeren, düzenli ve anlaşılır bir **Cevap Anahtarı** bölümü oluştur. Boşluk doldurma soruları için doğru kelimeleri, eşleştirme için doğru çiftleri, açık uçlu sorular için ise beklenen temel bilgileri içeren kısa ve net cevaplar ver.
+
+Lütfen çıktını, iki anahtar içeren bir JSON nesnesi olarak ver:
+1.  \`exam\`: Markdown formatındaki sınav kağıdının tamamını içeren bir string.
+2.  \`answerKey\`: Markdown formatındaki detaylı cevap anahtarını içeren bir string.
+
+Başka hiçbir açıklama veya metin ekleme.
 `;
+
+    const parts = [];
+
+    if (referenceExamDoc) {
+        parts.push({ text: "Aşağıda stil ve format için bir referans sınav dökümanı bulunmaktadır:" });
+        
+        if (referenceExamDoc.mimeType === 'text/plain') {
+            parts.push({ text: referenceExamDoc.data });
+        } else {
+            parts.push({
+                inlineData: {
+                    mimeType: referenceExamDoc.mimeType,
+                    data: referenceExamDoc.data,
+                },
+            });
+        }
+        
+        parts.push({ text: "--- Referans Sınav Sonu ---" });
+    }
     
-    const docPart = {
-        inlineData: {
-            mimeType: document.mimeType,
-            data: document.data,
+    if (sourceContentDocs && sourceContentDocs.length > 0) {
+        parts.push({ text: "Aşağıda soruları oluştururken içerik için kullanman gereken bilgi kaynağı dökümanları bulunmaktadır:" });
+        sourceContentDocs.forEach(doc => {
+            parts.push({ text: `--- BİLGİ KAYNAĞI BAŞLANGICI: ${doc.name} ---` });
+            parts.push({
+                inlineData: {
+                    mimeType: doc.content.mimeType,
+                    data: doc.content.data,
+                },
+            });
+            parts.push({ text: `--- BİLGİ KAYNAĞI SONU: ${doc.name} ---` });
+        });
+    }
+
+    parts.push({ text: prompt });
+
+    const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+            exam: { type: Type.STRING, description: "Markdown formatındaki sınav kağıdının tamamı." },
+            answerKey: { type: Type.STRING, description: "Markdown formatındaki detaylı cevap anahtarı." }
         },
-    };
-    const textPart = {
-        text: prompt
+        required: ['exam', 'answerKey']
     };
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: { parts: [docPart, textPart] },
+        contents: { parts },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: responseSchema,
+        }
+    });
+
+    const responseText = response.text.trim();
+    try {
+        const result = JSON.parse(responseText);
+        return {
+            examContent: result.exam || '',
+            answerKeyContent: result.answerKey || ''
+        };
+    } catch (e) {
+        console.error("Failed to parse Gemini JSON response for exam generation:", responseText);
+        throw new Error("Yapay zekadan geçersiz formatta bir yazılı yanıtı alındı.");
+    }
+};
+
+export const improveGeneratedExam = async (examContent: string): Promise<string> => {
+    const prompt = `
+Sen deneyimli bir öğretmen, müfredat uzmanı ve ölçme-değerlendirme uzmanısın.
+Sana Markdown formatında verilen aşağıdaki yazılı sınav kağıdını analiz et.
+
+Sınav Kağıdı:
+---
+${examContent}
+---
+
+Lütfen bu sınavı aşağıdaki kriterlere göre değerlendir ve yapıcı geri bildirimlerde bulun:
+1.  **Müfredat Uyumu ve Kapsam:** Sorular, ima edilen sınıf seviyesi ve konu için uygun mu? Konu dağılımı dengeli mi?
+2.  **Zorluk Dengesi:** Sınavda kolay, orta ve zor seviyede sorular dengeli bir şekilde dağıtılmış mı?
+3.  **Anlaşılırlık ve Adillik:** Sorular açık, net ve tek bir anlama gelecek şekilde mi yazılmış? Öğrenciyi yanıltabilecek ifadeler var mı?
+4.  **Puanlama:** Soruların puan dağılımı, sorunun zorluğu ve gerektirdiği çaba ile orantılı mı? Toplam puan 100 mü?
+5.  **Genel Kalite:** Sınavın genel yapısı, formatı ve kalitesi hakkında ne düşünüyorsun?
+
+Değerlendirmeni, her bir maddeyi ele alacak şekilde, kısa ve öz maddeler halinde sun. Eğer sınav zaten çok kaliteliyse, bunu belirt ve nedenlerini açıkla. Cevabın sadece bu değerlendirme metni olmalı.
+`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
     });
     
     return response.text.trim();

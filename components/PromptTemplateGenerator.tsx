@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from './UI';
-import { curriculumData } from '../data/curriculum';
+import { getCurriculumData } from '../services/curriculumService';
 import { generatePromptTemplateForKazanım } from '../services/geminiService';
-import type { QuestionType } from '../types';
+import type { OgrenmeAlani } from '../data/curriculum';
 
 export const PromptTemplateGenerator: React.FC<{ selectedSubjectId: string }> = ({ selectedSubjectId }) => {
   const [grade, setGrade] = useState<number>(8);
@@ -12,12 +12,24 @@ export const PromptTemplateGenerator: React.FC<{ selectedSubjectId: string }> = 
   const [error, setError] = useState('');
   const [generatedTemplate, setGeneratedTemplate] = useState('');
   const [copyButtonText, setCopyButtonText] = useState('Kodu Kopyala');
+  
+  const [curriculumForSubject, setCurriculumForSubject] = useState<Record<number, OgrenmeAlani[]>>({});
+  const [isCurriculumLoading, setIsCurriculumLoading] = useState(true);
 
-  const ogrenmeAlanlari = useMemo(() => curriculumData[selectedSubjectId]?.[grade] || [], [grade, selectedSubjectId]);
+  useEffect(() => {
+    const loadData = async () => {
+      setIsCurriculumLoading(true);
+      const allData = await getCurriculumData();
+      setCurriculumForSubject(allData[selectedSubjectId] || {});
+      setIsCurriculumLoading(false);
+    };
+    loadData();
+  }, [selectedSubjectId]);
+
+  const ogrenmeAlanlari = useMemo(() => curriculumForSubject[grade] || [], [grade, curriculumForSubject]);
   const kazanımlar = useMemo(() => {
     if (!ogrenmeAlani) return [];
     const alan = ogrenmeAlanlari.find(oa => oa.name === ogrenmeAlani);
-    // FIX: Flatten kazanımlar from all altKonular
     return alan?.altKonular.flatMap(ak => ak.kazanımlar) || [];
   }, [ogrenmeAlani, ogrenmeAlanlari]);
 
@@ -61,6 +73,10 @@ export const PromptTemplateGenerator: React.FC<{ selectedSubjectId: string }> = 
         setCopyButtonText('Hata!');
     });
   };
+  
+  if (isCurriculumLoading) {
+    return <div className="p-6 text-center">Müfredat verisi yükleniyor...</div>;
+  }
 
   return (
     <div className="p-4 sm:p-6 space-y-6">

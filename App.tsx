@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode, DocumentLibraryItem, Exam, QuizQuestion } from './types';
+import type { OgrenmeAlani } from './data/curriculum';
 import { Screen, Button, BackButton, DeveloperSignature } from './components/UI';
 import { GameScreen } from './components/QuizComponents';
 import { TeacherPanel } from './components/TeacherPanel';
 import { KapismaSetupScreen } from './components/KapismaSetupScreen';
 import { KapismaGame } from './components/KapismaGame';
-import { curriculumData } from './data/curriculum';
+import { getCurriculumData } from './services/curriculumService';
 
 // --- Subject Data ---
 interface Subject {
@@ -22,9 +23,6 @@ const availableSubjects: Subject[] = [
     { id: 'english', name: 'İngilizce', icon: '🇬🇧' },
     { id: 'paragraph', name: 'Paragraf Soru Bankası', icon: '📖' },
 ];
-
-
-// --- Initial Data & LocalStorage Hook ---
 
 const initialQuestions: Question[] = [];
 
@@ -72,9 +70,6 @@ function usePersistentState<T,>(key: string, defaultValue: T): [T, React.Dispatc
     return [state, setState];
 }
 
-
-// --- Main App Component ---
-
 export default function App() {
     const [screen, setScreen] = useState<ScreenId>('subject-select');
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
@@ -90,9 +85,11 @@ export default function App() {
     const [generatedExams, setGeneratedExams] = usePersistentState<Exam[]>('generatedExams', []);
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState('');
+    const [curriculum, setCurriculum] = useState<Record<string, Record<number, OgrenmeAlani[]>> | null>(null);
     
     useEffect(() => {
         document.body.className = 'theme-dark';
+        getCurriculumData().then(data => setCurriculum(data));
     }, []);
 
     useEffect(() => {
@@ -320,7 +317,8 @@ export default function App() {
                     </Screen>
                 );
             case 'learning-area-select':
-                const availableLearningAreas = curriculumData[selectedSubject!.id]?.[gameSettings.grade!] || [];
+                if (!curriculum) return <Screen id="loading" isActive={true}>Müfredat yükleniyor...</Screen>;
+                const availableLearningAreas = curriculum[selectedSubject!.id]?.[gameSettings.grade!] || [];
                 return (
                     <Screen id="learning-area-select" isActive={true}>
                         <BackButton onClick={() => setScreen('grade-select')} />
@@ -339,7 +337,8 @@ export default function App() {
                     </Screen>
                 );
             case 'kazanim-select':
-                const learningAreas = curriculumData[selectedSubject!.id]?.[gameSettings.grade!] || [];
+                if (!curriculum) return <Screen id="loading" isActive={true}>Müfredat yükleniyor...</Screen>;
+                const learningAreas = curriculum[selectedSubject!.id]?.[gameSettings.grade!] || [];
                 const selectedArea = learningAreas.find(oa => oa.name === gameSettings.topic);
                 const availableKazanims = selectedArea?.altKonular.flatMap(ak => ak.kazanımlar) || [];
                 return (

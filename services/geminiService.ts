@@ -3,16 +3,17 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, QuestionType } from "../types";
 import { promptTemplates } from '../data/promptTemplates';
 
-// ---- BURADAKİ DÜZELTME ----
-// API anahtarını Vite'ın önerdiği import.meta.env ile alın
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+// ---- HİBRİT API ANAHTARI ÇÖZÜMÜ ----
+// Bu kod, hem Vite tabanlı ortamlarda (Vercel gibi) hem de standart ortamlarda çalışır.
+// Önce import.meta.env'yi dener, eğer yoksa process.env'ye geri döner.
+const GEMINI_API_KEY = (import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) || process.env.API_KEY;
 
 if (!GEMINI_API_KEY) {
-    throw new Error("VITE_GEMINI_API_KEY environment variable is not set. Please configure it in your Vercel environment settings.");
+    throw new Error("API anahtarı bulunamadı. Lütfen VITE_GEMINI_API_KEY (Vercel/Vite için) veya API_KEY (diğer ortamlar için) ortam değişkenini ayarlayın.");
 }
 
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-const model = 'gemini-2.5-flash';
+const model = 'gemini-2.5-pro';
 
 const getQuestionSchema = (questionType: QuestionType) => {
     switch (questionType) {
@@ -405,7 +406,7 @@ Başka hiçbir açıklama veya metin ekleme.
     };
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: model,
         contents: { parts },
         config: {
             responseMimeType: "application/json",
@@ -447,7 +448,7 @@ Değerlendirmeni, her bir maddeyi ele alacak şekilde, kısa ve öz maddeler hal
 `;
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: model,
         contents: prompt,
     });
     
@@ -479,7 +480,7 @@ Aşağıdaki kazanım için bu prompt şablonunu oluştur:
 `;
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: model,
         contents: prompt,
     });
     

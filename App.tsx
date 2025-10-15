@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode, DocumentLibraryItem, Exam, QuizQuestion } from './types';
 import type { OgrenmeAlani } from './data/curriculum';
-import { Screen, Button, BackButton, DeveloperSignature } from './components/UI';
-import { GameScreen } from './components/QuizComponents';
-import { TeacherPanel } from './components/TeacherPanel';
-import { KapismaSetupScreen } from './components/KapismaSetupScreen';
-import { KapismaGame } from './components/KapismaGame';
+import { Screen, Button, BackButton, DeveloperSignature, LoadingSpinner } from './components/UI';
 import { getCurriculumData } from './services/curriculumService';
+
+// Lazy load components for code splitting
+const GameScreen = lazy(() => import('./components/QuizComponents'));
+const TeacherPanel = lazy(() => import('./components/TeacherPanel'));
+const KapismaSetupScreen = lazy(() => import('./components/KapismaSetupScreen'));
+const KapismaGame = lazy(() => import('./components/KapismaGame'));
+
 
 // --- Subject Data ---
 interface Subject {
@@ -744,7 +747,9 @@ export default function App() {
         <main className="h-screen w-screen font-sans overflow-hidden">
             <div className="relative w-full h-full p-2 sm:p-4 main-container-padded">
                 <div className="w-full h-full bg-slate-900/30 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden main-container-rounded">
-                    {renderScreen()}
+                    <Suspense fallback={<LoadingSpinner />}>
+                        {renderScreen()}
+                    </Suspense>
                 </div>
             </div>
         </main>

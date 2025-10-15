@@ -5,7 +5,7 @@ import { useKapismaAudio, AnimatedScore, kapismaSharedStyles } from './kapisma_h
 import { KapismaVSScreen } from './kapisma_helpers/KapismaVSScreen';
 import { KapismaQuestionScreen } from './kapisma_helpers/KapismaQuestionScreen';
 
-export const KapismaGame: React.FC<{
+const KapismaGame: React.FC<{
   questions: QuizQuestion[];
   settings: GameSettings;
   onGameEnd: (score: number, finalGroupScores?: { grup1: number, grup2: number }) => void;
@@ -210,3 +210,5 @@ export const KapismaGame: React.FC<{
         </div>
     );
 };
+
+export default KapismaGame;

@@ -6,7 +6,7 @@ interface KapismaSetupScreenProps {
   onBack: () => void;
 }
 
-export const KapismaSetupScreen: React.FC<KapismaSetupScreenProps> = ({ onStart, onBack }) => {
+const KapismaSetupScreen: React.FC<KapismaSetupScreenProps> = ({ onStart, onBack }) => {
   const audio = useKapismaAudio();
   const [teamACount, setTeamACount] = useState(5);
   const [teamBCount, setTeamBCount] = useState(5);
@@ -128,3 +128,5 @@ export const KapismaSetupScreen: React.FC<KapismaSetupScreenProps> = ({ onStart,
     </>
   );
 };
+
+export default KapismaSetupScreen;

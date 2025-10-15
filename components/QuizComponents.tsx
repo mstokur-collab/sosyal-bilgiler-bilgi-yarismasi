@@ -29,7 +29,7 @@ interface GameScreenProps {
   subjectId: string;
 }
 
-export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onGameEnd, onQuestionAnswered, groupNames, subjectId }) => {
+const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onGameEnd, onQuestionAnswered, groupNames, subjectId }) => {
     const { quizMode = 'klasik' } = settings;
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
@@ -685,3 +685,5 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         </div>
     );
 };
+
+export default GameScreen;

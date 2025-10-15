@@ -32,7 +32,7 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; children: Reac
   </button>
 );
 
-export const TeacherPanel: React.FC<TeacherPanelProps> = ({
+const TeacherPanel: React.FC<TeacherPanelProps> = ({
   questions,
   setQuestions,
   onSelectQuestion,
@@ -117,3 +117,5 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
     </div>
   );
 };
+
+export default TeacherPanel;

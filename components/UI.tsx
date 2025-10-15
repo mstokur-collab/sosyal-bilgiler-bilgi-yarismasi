@@ -74,3 +74,9 @@ export const DeveloperSignature: React.FC = () => (
         <p className="text-cyan-300 font-bold text-lg tracking-wide">MUSTAFA OKUR</p>
     </div>
 );
+
+export const LoadingSpinner: React.FC = () => (
+  <div className="flex justify-center items-center w-full h-full">
+    <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-teal-400"></div>
+  </div>
+);

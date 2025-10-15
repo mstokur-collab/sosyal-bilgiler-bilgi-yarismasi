@@ -621,8 +621,10 @@ const ExamGenerator: React.FC<{
                 answerKey: answerKeyContent,
             };
 
-            // FIX: Spreading `prevExams` can cause a runtime error if the data from localStorage is corrupted and not an array. Added a guard to ensure we are always spreading an array.
-            setGeneratedExams(prevExams => [newExam, ...(Array.isArray(prevExams) ? prevExams : [])]);
+            setGeneratedExams(prevExams => {
+                const existingExams = Array.isArray(prevExams) ? prevExams : [];
+                return [newExam, ...existingExams];
+            });
             setSelectedKazanims(new Map());
             setReferenceExamFile(null);
             if(referenceFileInputRef.current) referenceFileInputRef.current.value = "";
@@ -657,7 +659,7 @@ const ExamGenerator: React.FC<{
     };
 
     const handleDeleteExam = (idToDelete: number) => {
-        setGeneratedExams(prevExams => (Array.isArray(prevExams) ? prevExams : []).filter(exam => exam.id !== idToDelete));
+        setGeneratedExams(prevExams => (Array.isArray(prevExams) ? prevExams : []).filter(exam => exam && exam.id !== idToDelete));
     };
 
     const handleImproveExam = async (examToImprove: Exam) => {
@@ -668,7 +670,9 @@ const ExamGenerator: React.FC<{
             const feedback = await improveGeneratedExam(examToImprove.content);
             setGeneratedExams(prevExams => 
                 (Array.isArray(prevExams) ? prevExams : []).map(exam => {
-                    if (exam.id === examToImprove.id) {
+                    // FIX: Added a check to ensure 'exam' is not null before spreading.
+                    // This resolves a TypeScript error that occurs when `strictNullChecks` is disabled, as `...null` is a compile-time error.
+                    if (exam && exam.id === examToImprove.id) {
                         return { ...exam, feedback };
                     }
                     return exam;

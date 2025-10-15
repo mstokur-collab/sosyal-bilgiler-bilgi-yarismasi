@@ -12,11 +12,13 @@ export type ScreenId =
   | 'game' 
   | 'end' 
   | 'high-scores' 
-  | 'teacher-panel';
+  | 'teacher-panel'
+  | 'kapisma-setup'
+  | 'kapisma-game';
 
 export type Difficulty = 'kolay' | 'orta' | 'zor';
 export type CompetitionMode = 'bireysel' | 'grup';
-export type QuestionType = 'quiz' | 'fill-in' | 'matching';
+export type QuestionType = 'quiz' | 'fill-in' | 'matching' | 'kapisma';
 export type QuizMode = 'klasik' | 'zamana-karsi' | 'hayatta-kalma';
 
 export interface BaseQuestion {
@@ -66,6 +68,10 @@ export interface GameSettings {
   difficulty?: Difficulty;
   gameMode?: QuestionType;
   quizMode?: QuizMode;
+  // For Kapisma mode
+  teamACount?: number;
+  teamBCount?: number;
+  questionCount?: number;
 }
 
 export interface HighScore {

@@ -2,8 +2,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, QuestionType } from "../types";
 import { promptTemplates } from '../data/promptTemplates';
 
-// Her iki ortamda da (Vite/Vercel ve bu önizleme platformu) çalışacak esnek API anahtarı alımı
-const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || process.env.API_KEY;
+// FIX: Per coding guidelines, the API key must be obtained exclusively from process.env.API_KEY.
+const apiKey = process.env.API_KEY;
 
 if (!apiKey) {
     throw new Error("API_KEY (VITE_GEMINI_API_KEY veya API_KEY) ortam değişkeni ayarlanmamış. Lütfen doğru şekilde yapılandırdığınızdan emin olun.");

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // FIX: Imported 'CompetitionMode' type to resolve a 'Cannot find name' error on line 77.
-import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode, DocumentLibraryItem, Exam } from './types';
+import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode, DocumentLibraryItem, Exam, QuizQuestion } from './types';
 import { Screen, Button, BackButton, DeveloperSignature } from './components/UI';
 import { GameScreen } from './components/QuizComponents';
 import { TeacherPanel } from './components/TeacherPanel';
+import { KapismaSetupScreen, KapismaGame } from './components/Kapisma';
 import { curriculumData } from './data/curriculum';
+import { generateQuestionWithAI } from './services/geminiService';
 
 // --- Subject Data ---
 interface Subject {
@@ -82,18 +84,21 @@ export default function App() {
     const [gameSettings, setGameSettings] = useState<GameSettings>({});
     const [questions, setQuestions] = usePersistentState<Question[]>('quizQuestions', initialQuestions);
     const [highScores, setHighScores] = usePersistentState<HighScore[]>('quizHighScores', []);
-    const [lastGameResult, setLastGameResult] = useState<{score: number; finalGroupScores?: {grup1: number, grup2: number}; quizMode?: QuizMode}>({score: 0});
+    const [lastGameResult, setLastGameResult] = useState<{score: number; finalGroupScores?: {grup1: number, grup2: number}; quizMode?: QuizMode | 'kapisma'}>({score: 0});
     const [questionsForGame, setQuestionsForGame] = useState<Question[]>([]);
     const [solvedQuestionIds, setSolvedQuestionIds] = usePersistentState<number[]>('solvedQuestionIds', []);
     const [documentLibrary, setDocumentLibrary] = usePersistentState<DocumentLibraryItem[]>('documentLibrary', []);
     const [generatedExams, setGeneratedExams] = usePersistentState<Exam[]>('generatedExams', []);
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState('');
     
     useEffect(() => {
         document.body.className = 'theme-dark';
     }, []);
 
     useEffect(() => {
-        if (screen === 'game') {
+        const isGameScreen = screen === 'game' || screen === 'kapisma-game';
+        if (isGameScreen) {
             document.documentElement.classList.add('game-on');
         } else {
             document.documentElement.classList.remove('game-on');
@@ -132,11 +137,12 @@ export default function App() {
     }, [setQuestions, setHighScores, setSolvedQuestionIds, setGeneratedExams, setDocumentLibrary]);
 
     const handleGameEnd = useCallback((score: number, finalGroupScores?: { grup1: number, grup2: number }) => {
+        const quizMode = gameSettings.gameMode === 'kapisma' ? 'kapisma' : gameSettings.quizMode;
         const finalScore = finalGroupScores ? Math.max(finalGroupScores.grup1, finalGroupScores.grup2) : score;
-        setLastGameResult({ score: finalScore, finalGroupScores, quizMode: gameSettings.quizMode });
+        setLastGameResult({ score: finalScore, finalGroupScores, quizMode });
 
-        if (finalScore > 0) {
-            let entryName = playerName;
+        if (finalScore > 0 && gameSettings.gameMode !== 'kapisma') {
+             let entryName = playerName;
             if (gameSettings.competitionMode === 'grup' && finalGroupScores) {
                 if (finalGroupScores.grup1 > finalGroupScores.grup2) {
                     entryName = groupNames.grup1;
@@ -189,6 +195,36 @@ export default function App() {
         setScreen('game');
     };
 
+    const handleStartKapisma = (kapismaConfig: { teamACount: number; teamBCount: number; questionCount: number }) => {
+        const { questionCount } = kapismaConfig;
+    
+        // Filter available, unsolved quiz questions based on current settings
+        const availableQuestions = questions.filter(q =>
+            !solvedQuestionIds.includes(q.id) &&
+            q.type === 'quiz' &&
+            q.grade === gameSettings.grade &&
+            q.topic === gameSettings.topic &&
+            q.kazanımId === gameSettings.kazanımId
+        );
+    
+        if (availableQuestions.length === 0) {
+            alert("Bu kazanım için soru bankasında uygun çoktan seçmeli soru bulunamadı. Lütfen öğretmen panelinden soru üretin veya farklı bir kazanım seçin.");
+            return;
+        }
+    
+        // Shuffle and slice the questions
+        const shuffled = [...availableQuestions].sort(() => Math.random() - 0.5);
+        const gameQuestions = shuffled.slice(0, questionCount);
+    
+        if (gameQuestions.length < questionCount) {
+            alert(`Uyarı: Soru bankasında sadece ${gameQuestions.length} adet uygun soru bulundu. Oyun bu sayıda soru ile başlayacak.`);
+        }
+    
+        setQuestionsForGame(gameQuestions);
+        setGameSettings(s => ({ ...s, ...kapismaConfig }));
+        setScreen('kapisma-game');
+    };
+
     const handleSelectQuestion = (question: Question) => {
         setGameSettings({
             grade: question.grade,
@@ -205,6 +241,14 @@ export default function App() {
     };
     
     const renderScreen = () => {
+        if (isLoading) {
+            return (
+                <Screen id="loading-screen" isActive={true}>
+                    <div className="text-2xl animate-pulse">{loadingMessage || 'Yükleniyor...'}</div>
+                </Screen>
+            )
+        }
+        
         switch (screen) {
             case 'subject-select':
                  return (
@@ -321,16 +365,20 @@ export default function App() {
                     </Screen>
                 );
             case 'game-mode':
-                const availableTypes: Record<QuestionType, boolean> = { quiz: false, 'fill-in': false, matching: false };
-                questions
-                    .filter(q => 
-                        q.grade === gameSettings.grade && 
-                        q.topic === gameSettings.topic && 
-                        q.kazanımId === gameSettings.kazanımId
-                    )
-                    .forEach(q => {
-                        if (q.type in availableTypes) availableTypes[q.type] = true;
-                    });
+                const availableQuestionsForKazanım = questions.filter(q => 
+                    q.grade === gameSettings.grade && 
+                    q.topic === gameSettings.topic && 
+                    q.kazanımId === gameSettings.kazanımId &&
+                    !solvedQuestionIds.includes(q.id)
+                );
+
+                const availableTypes: Record<string, boolean> = { quiz: false, 'fill-in': false, matching: false, kapisma: false };
+                availableQuestionsForKazanım.forEach(q => {
+                    if (q.type in availableTypes) availableTypes[q.type] = true;
+                });
+
+                const availableKapismaQuestionsCount = availableQuestionsForKazanım.filter(q => q.type === 'quiz').length;
+                availableTypes.kapisma = availableKapismaQuestionsCount > 0;
                 
                 // Helper component for the new card design
                 const GameModeCard: React.FC<{
@@ -361,7 +409,7 @@ export default function App() {
                      <Screen id="game-mode" isActive={true}>
                         <BackButton onClick={() => setScreen('kazanim-select')} />
                         <h2 className="text-3xl sm:text-4xl font-bold mb-8">🎯 Oyun Türünü Seçin</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-5xl">
                             <GameModeCard
                                 icon="✅"
                                 title="Çoktan Seçmeli"
@@ -382,6 +430,13 @@ export default function App() {
                                 description="İlgili kavramları ve açıklamalarını doğru şekilde bir araya getirin."
                                 onClick={() => { setGameSettings(s => ({ ...s, gameMode: 'matching'})); setScreen('difficulty-select');}}
                                 disabled={!availableTypes.matching}
+                            />
+                             <GameModeCard
+                                icon="⚡"
+                                title="Kapışma"
+                                description={`İki takım aynı anda aynı soruya karşı! Hızlı ve doğru olan kazanır. (Bankada ${availableKapismaQuestionsCount} soru var)`}
+                                onClick={() => { setGameSettings(s => ({ ...s, gameMode: 'kapisma'})); setScreen('kapisma-setup');}}
+                                disabled={!availableTypes.kapisma}
                             />
                         </div>
                     </Screen>
@@ -597,21 +652,37 @@ export default function App() {
                         <Button onClick={() => setScreen('game-mode')}>Geri Dön</Button>
                     </Screen>
                 );
+            case 'kapisma-setup':
+                return (
+                    <KapismaSetupScreen 
+                        onStart={handleStartKapisma} 
+                        onBack={() => setScreen('game-mode')}
+                    />
+                );
+            case 'kapisma-game':
+                return (
+                    <KapismaGame 
+                        questions={questionsForGame as QuizQuestion[]}
+                        settings={gameSettings}
+                        onGameEnd={handleGameEnd}
+                    />
+                );
             case 'end':
                 const { score, finalGroupScores, quizMode } = lastGameResult;
                 const isSurvival = quizMode === 'hayatta-kalma';
+                const isKapisma = quizMode === 'kapisma';
                 const scoreLabel = isSurvival ? 'Başarı Serin' : 'Toplam Skorun';
-
+                
                 return (
                     <Screen id="end-screen" isActive={true}>
                         <h2 className="text-5xl font-bold mb-4">🎉 Oyun Bitti!</h2>
                         <div className="text-2xl mb-8 leading-relaxed">
                             {finalGroupScores ? (
                                 <>
-                                    <p>{groupNames.grup1}: {finalGroupScores.grup1} Puan</p>
-                                    <p>{groupNames.grup2}: {finalGroupScores.grup2} Puan</p>
+                                    <p>Takım A: {finalGroupScores.grup1} Puan</p>
+                                    <p>Takım B: {finalGroupScores.grup2} Puan</p>
                                     <p className="mt-4 font-bold text-yellow-300">
-                                      {finalGroupScores.grup1 > finalGroupScores.grup2 ? `🏆 Kazanan: ${groupNames.grup1}!` : finalGroupScores.grup2 > finalGroupScores.grup1 ? `🏆 Kazanan: ${groupNames.grup2}!` : "🤝 Berabere!"}
+                                      {finalGroupScores.grup1 > finalGroupScores.grup2 ? `🏆 Kazanan: Takım A!` : finalGroupScores.grup2 > finalGroupScores.grup1 ? `🏆 Kazanan: Takım B!` : "🤝 Berabere!"}
                                     </p>
                                 </>
                             ) : (
@@ -620,7 +691,7 @@ export default function App() {
                         </div>
                         <div className="flex flex-col sm:flex-row gap-4">
                             <Button onClick={resetGame}>🏠 Ana Menü</Button>
-                            <Button variant="secondary" onClick={() => setScreen('high-scores')}>🏆 Yüksek Skorlar</Button>
+                            {!isKapisma && <Button variant="secondary" onClick={() => setScreen('high-scores')}>🏆 Yüksek Skorlar</Button>}
                         </div>
                     </Screen>
                 );

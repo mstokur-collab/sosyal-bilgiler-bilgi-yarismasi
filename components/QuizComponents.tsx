@@ -361,6 +361,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     }, [quizMode, streak, score, groupScores, isGroupMode, onGameEnd, answers]);
 
     const goToNextQuestion = useCallback(() => {
+        setIsTimerActive(false); // FIX: Immediately pause timer on navigation to prevent race condition
         if (currentQuestionIndex < totalQuestions - 1) {
             setCurrentQuestionIndex(prev => prev + 1);
         } else {

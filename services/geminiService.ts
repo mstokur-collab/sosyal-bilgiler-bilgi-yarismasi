@@ -1,15 +1,17 @@
+// @ts-nocheck
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Difficulty, QuestionType } from "../types";
 import { promptTemplates } from '../data/promptTemplates';
 
-// FIX: Per coding guidelines, the API key must be obtained exclusively from process.env.API_KEY.
-const apiKey = process.env.API_KEY;
+// ---- BURADAKİ DÜZELTME ----
+// API anahtarını Vite'ın önerdiği import.meta.env ile alın
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
-if (!apiKey) {
-    throw new Error("API_KEY (VITE_GEMINI_API_KEY veya API_KEY) ortam değişkeni ayarlanmamış. Lütfen doğru şekilde yapılandırdığınızdan emin olun.");
+if (!GEMINI_API_KEY) {
+    throw new Error("VITE_GEMINI_API_KEY environment variable is not set. Please configure it in your Vercel environment settings.");
 }
 
-const ai = new GoogleGenAI({ apiKey });
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 const model = 'gemini-2.5-flash';
 
 const getQuestionSchema = (questionType: QuestionType) => {

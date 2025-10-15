@@ -1,234 +1,22 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef, useLayoutEffect } from 'react';
-import type { Question, GameSettings, QuizQuestion, FillInQuestion, MatchingQuestion, MatchingPair } from '../types';
-import { Button, Modal } from './UI';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import type { Question, GameSettings, QuizQuestion, FillInQuestion, MatchingQuestion } from '../types';
+import { Modal } from './UI';
+import { useFitText } from './quiz_helpers/useFitText';
+import { MatchingView } from './quiz_helpers/MatchingView';
 
 // --- Helper Functions & Constants ---
 
 const QUESTION_TIME_QUIZ = 40;
 const QUESTION_TIME_FILL_IN = 35;
 const QUESTION_TIME_MATCHING = 40;
-const QUESTION_TIME_PARAGRAPH = 70; // Paragraf soruları için yeni zaman sabiti
-const MASTER_TIME_DEFAULT = 120; // 2 minutes for timed challenge
+const QUESTION_TIME_PARAGRAPH = 70;
+const MASTER_TIME_DEFAULT = 120;
 
-// FIX: Added missing 'AnswerState' interface definition.
 interface AnswerState {
   selected: any;
   isCorrect: boolean;
   displayedOptions?: string[];
 }
-
-// --- Dynamic Font Sizing Hook ---
-const useFitText = (text: string, refitTrigger?: any) => {
-    const textRef = useRef<HTMLDivElement>(null);
-
-    const fitTextCallback = useCallback(() => {
-        const el = textRef.current;
-        if (!el || !el.parentElement) return;
-        const container = el.parentElement;
-
-        // To avoid a flash of oversized text, we work on a hidden element
-        el.style.visibility = 'hidden';
-
-        // Set a reasonable upper bound for smart boards and a minimum for readability
-        const maxFontSize = 100;
-        const minFontSize = 14;
-        let currentSize = maxFontSize;
-
-        el.style.fontSize = `${currentSize}px`;
-
-        // Check for both vertical and horizontal overflow
-        const isOverflowing = () => el.scrollHeight > container.clientHeight || el.scrollWidth > container.clientWidth;
-
-        // Iteratively decrease font size until it fits within the container
-        while (isOverflowing() && currentSize > minFontSize) {
-            currentSize -= 1;
-            el.style.fontSize = `${currentSize}px`;
-        }
-        
-        // Make the correctly sized text visible again
-        el.style.visibility = 'visible';
-    }, []); // This callback has no dependencies as it only operates on DOM refs
-
-    useLayoutEffect(() => {
-        // Run the fitting logic when the component mounts/text changes
-        fitTextCallback();
-
-        // Also run it on window resize to handle responsive changes
-        window.addEventListener('resize', fitTextCallback);
-        
-        // Cleanup function to remove the event listener
-        return () => {
-            window.removeEventListener('resize', fitTextCallback);
-        };
-    }, [text, fitTextCallback, refitTrigger]); // Rerun the effect if the text content or the trigger changes
-
-    return textRef;
-};
-
-// --- Redesigned Matching View Component ---
-
-const MatchingView: React.FC<{
-  question: MatchingQuestion;
-  onAnswer: (isCorrect: boolean, selected: Record<string, string>) => void;
-  answerState?: AnswerState;
-  playSound: (type: 'correct' | 'incorrect' | 'tick') => void;
-}> = ({ question, onAnswer, answerState, playSound }) => {
-    const [leftItems, setLeftItems] = useState<string[]>([]);
-    const [rightItems, setRightItems] = useState<string[]>([]);
-    const [selectedLeft, setSelectedLeft] = useState<string | null>(null);
-    const [matches, setMatches] = useState<Record<string, string>>({});
-    const [incorrectShake, setIncorrectShake] = useState<string | null>(null);
-    
-    const containerRef = useRef<HTMLDivElement>(null);
-    const isAnswered = !!answerState;
-
-    const correctPairsMap = useMemo(() => new Map(question.pairs.map(p => [p.term, p.definition])), [question.pairs]);
-    const definitionToTermMap = useMemo(() => new Map(question.pairs.map(p => [p.definition, p.term])), [question.pairs]);
-
-    // Assign stable colors to each correct pair
-    const pairColors = useMemo(() => {
-        const colors = [
-            { border: 'border-sky-400', bg: 'bg-sky-500/80' },
-            { border: 'border-emerald-400', bg: 'bg-emerald-500/80' },
-            { border: 'border-amber-400', bg: 'bg-amber-500/80' },
-            { border: 'border-rose-400', bg: 'bg-rose-500/80' },
-            { border: 'border-violet-400', bg: 'bg-violet-500/80' },
-        ];
-        const map = new Map<string, typeof colors[0]>();
-        question.pairs.forEach((pair, index) => map.set(pair.term, colors[index % colors.length]));
-        return map;
-    }, [question.pairs]);
-
-    useEffect(() => {
-        setLeftItems(question.pairs.map(p => p.term).sort(() => Math.random() - 0.5));
-        setRightItems(question.pairs.map(p => p.definition).sort(() => Math.random() - 0.5));
-        setMatches(answerState ? answerState.selected : {});
-        setSelectedLeft(null);
-    }, [question, answerState]);
-
-    useLayoutEffect(() => {
-        if (!containerRef.current) return;
-        // FIX: Cast querySelectorAll result to specify that `span` is an HTML element, giving it a `style` property.
-        const spans = containerRef.current.querySelectorAll<HTMLSpanElement>('button > span');
-        spans.forEach(span => {
-            const button = span.parentElement;
-            if(!button) return;
-
-            const maxFontSize = 16;
-            const minFontSize = 8;
-            let currentSize = maxFontSize;
-            
-            span.style.fontSize = `${currentSize}px`;
-            span.style.whiteSpace = 'nowrap';
-            const checkOverflow = () => span.scrollWidth > button.clientWidth || span.scrollHeight > button.clientHeight;
-
-            if (checkOverflow()) {
-                span.style.whiteSpace = 'normal';
-            }
-
-            while (checkOverflow() && currentSize > minFontSize) {
-                currentSize -= 0.5;
-                span.style.fontSize = `${currentSize}px`;
-            }
-        });
-    }, [leftItems, rightItems, question, containerRef]);
-
-
-    useEffect(() => {
-        if (!isAnswered && Object.keys(matches).length === question.pairs.length) {
-            const isAllCorrect = question.pairs.every(p => matches[p.term] === p.definition);
-            onAnswer(isAllCorrect, matches);
-        }
-    }, [matches, question.pairs, onAnswer, isAnswered]);
-
-    const handleLeftClick = (term: string) => {
-        if (isAnswered || matches[term]) return;
-        setSelectedLeft(term === selectedLeft ? null : term);
-    };
-
-    const handleRightClick = (definition: string) => {
-        if (isAnswered || !selectedLeft || Object.values(matches).includes(definition)) return;
-
-        if (correctPairsMap.get(selectedLeft) === definition) {
-            setMatches(prev => ({ ...prev, [selectedLeft]: definition }));
-            playSound('correct');
-        } else {
-            playSound('incorrect');
-            setIncorrectShake(definition);
-            setTimeout(() => setIncorrectShake(null), 500);
-        }
-        setSelectedLeft(null);
-    };
-
-    const getItemClass = (item: string, side: 'left' | 'right') => {
-        const isSelected = selectedLeft === item;
-        const termForMatchCheck = side === 'left' ? item : definitionToTermMap.get(item);
-        const isMatched = !!termForMatchCheck && !!matches[termForMatchCheck];
-        
-        const shakeClass = incorrectShake === item ? 'animate-shake' : '';
-        const baseClass = 'w-full h-full transition-all duration-300 rounded-lg flex items-center justify-center text-center backdrop-blur-sm border-2';
-
-        if (isAnswered) {
-            const term = side === 'left' ? item : definitionToTermMap.get(item)!;
-            const userMatch = answerState.selected[term];
-            const correctMatch = correctPairsMap.get(term);
-            
-            if (userMatch === correctMatch) return `${baseClass} bg-green-500/50 border-green-400`;
-            return `${baseClass} bg-red-500/50 border-red-400 opacity-70`;
-        }
-        
-        if (isMatched) {
-            const term = side === 'left' ? item : definitionToTermMap.get(item)!;
-            const color = pairColors.get(term);
-            return `${baseClass} ${color?.bg} ${color?.border}`;
-        }
-
-        if (isSelected) {
-            return `${baseClass} bg-green-400/90 border-green-300 scale-105 ring-2 ring-green-200`;
-        }
-        
-        return `${baseClass} bg-black/20 hover:bg-black/40 border-slate-600 ${shakeClass}`;
-    };
-
-    return (
-        <>
-            <div className="question-text-container">
-                 <div className="question-text">{question.question || "Aşağıdaki ifadeleri doğru şekilde eşleştirin."}</div>
-            </div>
-            <div 
-                ref={containerRef} 
-                className="flex-grow w-full flex p-2 gap-2"
-            >
-                <div className="flex-1 grid gap-2" style={{ gridTemplateRows: `repeat(${question.pairs.length}, 1fr)`}}>
-                    {leftItems.map(term => (
-                        <button key={term} onClick={() => handleLeftClick(term)} disabled={isAnswered} className={getItemClass(term, 'left')}>
-                            <span className="p-1">{term}</span>
-                        </button>
-                    ))}
-                </div>
-                <div className="flex-1 grid gap-2" style={{ gridTemplateRows: `repeat(${question.pairs.length}, 1fr)`}}>
-                    {rightItems.map(definition => (
-                        <button key={definition} onClick={() => handleRightClick(definition)} disabled={isAnswered || !selectedLeft || Object.values(matches).includes(definition)} className={getItemClass(definition, 'right')}>
-                            <span className="p-1">{definition}</span>
-                        </button>
-                    ))}
-                </div>
-            </div>
-            
-            <style>{`
-                .animate-shake {
-                    animation: shake 0.5s ease-in-out;
-                }
-                @keyframes shake {
-                    0%, 100% { transform: translateX(0); }
-                    25% { transform: translateX(-6px); }
-                    75% { transform: translateX(6px); }
-                }
-            `}</style>
-        </>
-    );
-};
-
 
 // --- Main Game Screen ---
 
@@ -246,14 +34,12 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
 
-    // Mode-specific state
     const [score, setScore] = useState(0);
     const [groupScores, setGroupScores] = useState({ grup1: 0, grup2: 0 });
     const [streak, setStreak] = useState(0);
     const [masterTimeLeft, setMasterTimeLeft] = useState(MASTER_TIME_DEFAULT);
     const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_QUIZ);
 
-    // Common state
     const [answers, setAnswers] = useState<Record<number, AnswerState>>({});
     const [showEndConfirm, setShowEndConfirm] = useState(false);
     const [jokers, setJokers] = useState({ fiftyFifty: true, addTime: true, skip: true });
@@ -263,7 +49,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const [isTimerActive, setIsTimerActive] = useState(false);
     const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
-    // Ref to get latest timeLeft in callbacks without re-creating them every second
     const timeLeftRef = useRef(timeLeft);
     useEffect(() => {
         timeLeftRef.current = timeLeft;
@@ -272,7 +57,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const audioCtxRef = useRef<AudioContext | null>(null);
     const isGroupMode = settings.competitionMode === 'grup';
     const activeGroup = useMemo(() => {
-        if (!isGroupMode) return 'grup1'; // Not used in individual mode
+        if (!isGroupMode) return 'grup1';
         const totalAnswers = Object.keys(answers).length;
         return totalAnswers % 2 === 0 ? 'grup1' : 'grup2';
     }, [isGroupMode, answers]);
@@ -292,7 +77,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     }, []);
 
     useEffect(() => {
-        // Shuffle questions for all modes except classic for variety
         if (quizMode !== 'klasik') {
             setShuffledQuestions([...questions].sort(() => Math.random() - 0.5));
         } else {
@@ -310,7 +94,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const currentAnswerState = answers[currentQuestionIndex];
     const isAnswered = !!currentAnswerState;
 
-    // FIX: All hooks are moved to the top-level to prevent conditional rendering errors.
     const isParagraphQuestion = useMemo(() => {
         if (currentQuestion?.type !== 'quiz') return false;
         return subjectId === 'paragraph' && (currentQuestion as QuizQuestion).question.includes('\n\n');
@@ -338,8 +121,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         return { paragraph: null, questionText: '' };
     }, [currentQuestion, isParagraphQuestion]);
 
-    // This hook is now called unconditionally. For paragraph questions which don't need
-    // text fitting, we pass an empty string to satisfy the rules of hooks.
     const questionTextRef = useFitText(isParagraphQuestion ? '' : (questionText || ''), isAnswered);
 
     const { grup1: grup1Name = 'Grup 1', grup2: grup2Name = 'Grup 2' } = groupNames || {};
@@ -348,7 +129,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         window.speechSynthesis.cancel();
         let finalScore = 0;
         if (quizMode === 'zamana-karsi') {
-            // FIX: Explicitly type 'a' as AnswerState to resolve 'isCorrect does not exist on unknown' error.
             finalScore = Object.values(answers).filter((a: AnswerState) => a.isCorrect).length * 10;
         } else if (quizMode === 'hayatta-kalma') {
             finalScore = streak;
@@ -361,7 +141,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     }, [quizMode, streak, score, groupScores, isGroupMode, onGameEnd, answers]);
 
     const goToNextQuestion = useCallback(() => {
-        setIsTimerActive(false); // FIX: Immediately pause timer on navigation to prevent race condition
+        setIsTimerActive(false);
         if (currentQuestionIndex < totalQuestions - 1) {
             setCurrentQuestionIndex(prev => prev + 1);
         } else {
@@ -438,14 +218,14 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         if (quizMode === 'hayatta-kalma') {
             if (isCorrect) {
                 if (!answers[currentQuestionIndex]) setStreak(prev => prev + 1);
-                setTimeout(goToNextQuestion, 1500); // Auto-advance on correct answer
+                setTimeout(goToNextQuestion, 1500);
             } else {
-                setTimeout(finishGame, 1500); // Game over after showing result
+                setTimeout(finishGame, 1500);
             }
         } else if (quizMode === 'zamana-karsi') {
-            // No auto-advance, user controls navigation
+            // No auto-advance
         } else { // Klasik mod
-            if (!answers[currentQuestionIndex]) { // Only award points once
+            if (!answers[currentQuestionIndex]) {
                 if (isCorrect) {
                     const points = 10 + Math.floor(timeLeftRef.current / 2);
                     if (isGroupMode) {
@@ -455,9 +235,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                     }
                 }
             }
-            // Auto-advance REMOVED. User must click 'Next'.
         }
-    }, [answers, currentQuestionIndex, quizMode, isGroupMode, activeGroup, playSound, finishGame, onQuestionAnswered, currentQuestion, optionsToShow, streak, goToNextQuestion, score, groupScores]);
+    }, [answers, currentQuestionIndex, quizMode, isGroupMode, activeGroup, playSound, finishGame, onQuestionAnswered, currentQuestion, optionsToShow, goToNextQuestion]);
 
     const speakQuestionFlow = useCallback((onEndCallback?: () => void) => {
         if (!isSpeechEnabled || !currentQuestion) {
@@ -504,7 +283,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         let partIndex = 0;
         const speakNextPart = () => {
             if (!isSpeechEnabled || partIndex >= partsToRead.length) {
-                if(isSpeechEnabled) onEndCallback?.(); // only call if speech was enabled through the process
+                if(isSpeechEnabled) onEndCallback?.();
                 return;
             }
             
@@ -539,7 +318,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
             const isNowEnabled = !prev;
             if (!isNowEnabled) {
                 window.speechSynthesis.cancel();
-                // If timer was paused waiting for speech, start it.
                 if (!isTimerActive && !isAnswered) {
                     setIsTimerActive(true);
                 }
@@ -548,8 +326,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         });
     }, [isTimerActive, isAnswered]);
 
-
-    // Timers Effect
     useEffect(() => {
         if (isAnswered || totalQuestions === 0 || !isTimerActive) return;
 
@@ -561,7 +337,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
             } else {
                 finishGame();
             }
-        } else { // Klasik and Hayatta Kalma
+        } else {
             if (timeLeft > 0) {
                 const timer = setTimeout(() => setTimeLeft(prev => prev - 1), 1000);
                 if (timeLeft <= 10) playSound('tick');
@@ -572,9 +348,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         }
     }, [timeLeft, masterTimeLeft, isAnswered, playSound, handleAnswer, quizMode, finishGame, totalQuestions, isTimerActive]);
 
-    // Question Change Effect
     useEffect(() => {
-        setIsTimerActive(false); // Pause timer for new question
+        setIsTimerActive(false);
         if (quizMode === 'klasik' || quizMode === 'hayatta-kalma') {
             let time;
 
@@ -596,7 +371,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         }
     }, [currentQuestionIndex, currentQuestion?.type, quizMode, streak, subjectId]);
     
-    // Speech and Timer Activation Effect
     useEffect(() => {
         const startTimer = () => {
             if (!isAnswered) {
@@ -605,7 +379,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
         };
 
         if (isSpeechEnabled) {
-            // Set a short delay to allow the new question to render before speaking
             const timerId = setTimeout(() => speakQuestionFlow(startTimer), 500);
             return () => clearTimeout(timerId);
         } else {
@@ -641,7 +414,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
 
         if (quizMode === 'hayatta-kalma') {
             handleAnswer(false, { skipped: true });
-        } else { // Klasik and Zamana Karsi
+        } else {
             goToNextQuestion();
         }
     }
@@ -661,17 +434,14 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                         const correctAnswerText = quizQuestion.answer.trim();
                         const normalizedSelectedOption = selectedOption.trim();
                 
-                        // 1. Direct text match (case-insensitive for robustness)
                         if (normalizedSelectedOption.toLowerCase() === correctAnswerText.toLowerCase()) {
                             return true;
                         }
                 
-                        // 2. Fallback: Check if AI returned a letter ('A', 'B', 'C', 'D')
-                        // optionsToShow is the alphabetically sorted list of options displayed.
                         const optionIndex = optionsToShow.findIndex(opt => opt.trim() === normalizedSelectedOption);
                         
                         if (optionIndex !== -1) {
-                            const expectedLetter = String.fromCharCode(65 + optionIndex); // A, B, C, D...
+                            const expectedLetter = String.fromCharCode(65 + optionIndex);
                             if (correctAnswerText.toUpperCase() === expectedLetter) {
                                 return true;
                             }
@@ -708,17 +478,14 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                         return isThisOptionTheCorrectAnswer() ? 'correct' : 'opacity-50';
                     }
                 
-                    // If the user picked this option, style it based on correctness
                     if (option === selectedAnswer) {
                         return currentAnswerState.isCorrect ? 'correct' : 'incorrect';
                     }
                 
-                    // If this is the correct answer (and user picked something else), highlight it
                     if (!currentAnswerState.isCorrect && isThisOptionTheCorrectAnswer()) {
                         return 'correct';
                     }
                 
-                    // Otherwise, it's an unselected, incorrect option
                     return 'opacity-50';
                 };
 
@@ -834,14 +601,12 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
     const nextDisabled = useMemo(() => {
         if (currentQuestionIndex >= totalQuestions - 1) return true;
         if (quizMode === 'hayatta-kalma') {
-            // Disable if answered incorrectly or not answered yet
             return !isAnswered || !currentAnswerState.isCorrect;
         }
         if (quizMode === 'klasik') {
-            // Disable until answered. Enable after answering to allow manual advance.
             return !isAnswered;
         }
-        return false; // Free navigation for timed mode
+        return false;
     }, [currentQuestionIndex, totalQuestions, quizMode, isAnswered, currentAnswerState]);
 
     const jokerDisabled = isAnswered && quizMode !== 'zamana-karsi';
@@ -885,7 +650,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({ questions, settings, onG
                     </div>
                 ) : (
                     <div className="score">Skor: <span>{quizMode === 'zamana-karsi' ? 
-// FIX: Explicitly type 'a' as AnswerState to resolve 'isCorrect does not exist on unknown' error.
                     (Object.values(answers).filter((a: AnswerState) => a.isCorrect).length * 10) : score}</span></div>
                 )}
             </div>

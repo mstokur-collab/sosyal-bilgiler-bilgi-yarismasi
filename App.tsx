@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// FIX: Imported 'CompetitionMode' type to resolve a 'Cannot find name' error on line 77.
 import type { ScreenId, Question, HighScore, GameSettings, QuestionType, CompetitionMode, QuizMode, DocumentLibraryItem, Exam, QuizQuestion } from './types';
 import { Screen, Button, BackButton, DeveloperSignature } from './components/UI';
 import { GameScreen } from './components/QuizComponents';
 import { TeacherPanel } from './components/TeacherPanel';
-import { KapismaSetupScreen, KapismaGame } from './components/Kapisma';
+import { KapismaSetupScreen } from './components/KapismaSetupScreen';
+import { KapismaGame } from './components/KapismaGame';
 import { curriculumData } from './data/curriculum';
-import { generateQuestionWithAI } from './services/geminiService';
 
 // --- Subject Data ---
 interface Subject {
@@ -198,7 +197,6 @@ export default function App() {
     const handleStartKapisma = (kapismaConfig: { teamACount: number; teamBCount: number; questionCount: number }) => {
         const { questionCount } = kapismaConfig;
     
-        // Filter available, unsolved quiz questions based on current settings
         const availableQuestions = questions.filter(q =>
             !solvedQuestionIds.includes(q.id) &&
             q.type === 'quiz' &&
@@ -212,7 +210,6 @@ export default function App() {
             return;
         }
     
-        // Shuffle and slice the questions
         const shuffled = [...availableQuestions].sort(() => Math.random() - 0.5);
         const gameQuestions = shuffled.slice(0, questionCount);
     
@@ -344,7 +341,6 @@ export default function App() {
             case 'kazanim-select':
                 const learningAreas = curriculumData[selectedSubject!.id]?.[gameSettings.grade!] || [];
                 const selectedArea = learningAreas.find(oa => oa.name === gameSettings.topic);
-                // FIX: Flatten kazanımlar from all altKonular within the selected learning area.
                 const availableKazanims = selectedArea?.altKonular.flatMap(ak => ak.kazanımlar) || [];
                 return (
                     <Screen id="kazanim-select" isActive={true}>
@@ -380,7 +376,6 @@ export default function App() {
                 const availableKapismaQuestionsCount = availableQuestionsForKazanım.filter(q => q.type === 'quiz').length;
                 availableTypes.kapisma = availableKapismaQuestionsCount > 0;
                 
-                // Helper component for the new card design
                 const GameModeCard: React.FC<{
                     icon: string;
                     title: string;
@@ -442,7 +437,6 @@ export default function App() {
                     </Screen>
                 );
              case 'difficulty-select':
-                // Helper component for the new difficulty card design
                 const DifficultyCard: React.FC<{
                     icon: string;
                     title: string;
@@ -497,7 +491,6 @@ export default function App() {
                     </Screen>
                 );
             case 'competition-mode':
-                // Helper component for the new competition mode card design
                 const CompetitionModeCard: React.FC<{
                     icon: string;
                     title: string;
@@ -698,7 +691,6 @@ export default function App() {
             case 'high-scores':
                 return (
                     <Screen id="high-scores-screen" isActive={true}>
-                        {/* FIX: Corrected back button logic to check last game result instead of current screen state. */}
                         <BackButton onClick={() => lastGameResult.score > 0 ? setScreen('end') : setScreen('start')} />
                         <h2 className="text-4xl font-bold mb-6">🏆 Yüksek Skorlar</h2>
                         <div className="w-full max-w-2xl space-y-3">

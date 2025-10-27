@@ -13,7 +13,7 @@ if (!GEMINI_API_KEY) {
 }
 
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-const model = 'gemini-2.5-pro';
+const model = 'gemini-flash-latest';
 
 const getQuestionSchema = (questionType: QuestionType) => {
     switch (questionType) {
